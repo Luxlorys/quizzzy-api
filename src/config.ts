@@ -14,19 +14,13 @@ const envSchema = z.object({
     DATABASE_URL: z.string().min(1),
     REDIS_URL: z.string().min(1),
     /** How long a cached entity stays readable — the bound on stale data if an
-     *  invalidation is ever lost (see modules/task/task.cache.repository.ts). */
+     *  invalidation is ever lost (see modules/quiz/quiz.cache.repository.ts). */
     CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
     DOCS_PASSWORD: z.string().min(1).optional(),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
-    // Object storage (S3 API). Endpoint is set for S3-compatible servers
-    // (MinIO locally and in the integration lane); leave it unset for AWS.
-    // Credentials are optional: without them the AWS SDK falls back to its
-    // default provider chain (IAM role, shared config, env).
-    S3_REGION: z.string().default("us-east-1"),
-    S3_AVATARS_BUCKET: z.string().default("avatars"),
-    S3_ENDPOINT: z.string().optional(),
-    S3_ACCESS_KEY_ID: z.string().optional(),
-    S3_SECRET_ACCESS_KEY: z.string().optional(),
+    /** Where submitted article HTML is written (see
+     *  modules/article/article.file.repository.ts). */
+    ARTICLE_STORAGE_DIR: z.string().min(1).default("storage/articles"),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

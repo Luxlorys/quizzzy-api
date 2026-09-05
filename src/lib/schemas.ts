@@ -8,3 +8,6 @@ import { z } from "zod";
 export const errorResponseSchema = z.object({
     message: z.string(),
 });
+
+/** The body of a 204: nothing at all. */
+export const noContentSchema = z.void();

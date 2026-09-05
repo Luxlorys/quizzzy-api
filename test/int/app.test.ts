@@ -45,7 +45,7 @@ describe("application plumbing", () => {
         }>();
 
         expect(spec.openapi).toMatch(/^3\./);
-        expect(Object.keys(spec.paths)).toContain("/api/tasks/");
+        expect(Object.keys(spec.paths)).toContain("/api/quizzes/");
     });
 
     it("locks the docs behind basic auth when DOCS_PASSWORD is set", async () => {

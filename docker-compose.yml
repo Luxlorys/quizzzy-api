@@ -43,9 +43,12 @@ services:
             NODE_ENV: production
             DATABASE_URL: postgresql://postgres:postgres@postgres:5432/app
             REDIS_URL: redis://redis:6379
+            ARTICLE_STORAGE_DIR: /app/storage/articles
             PORT: 3000
         ports:
             - "3000:3000"
+        volumes:
+            - articles-data:/app/storage/articles
         depends_on:
             postgres:
                 condition: service_healthy
@@ -54,3 +57,4 @@ services:
 
 volumes:
     postgres-data:
+    articles-data:

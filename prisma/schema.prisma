@@ -7,30 +7,96 @@ datasource db {
   provider = "postgresql"
 }
 
-enum TaskStatus {
-  open
-  done
-  archived
+enum QuestionKind {
+  single
+  multi
 }
 
-model User {
-  id          Int       @id @default(autoincrement())
-  email       String    @unique
-  name        String
-  avatarKey   String?   @map("avatar_key")
-  onboardedAt DateTime? @map("onboarded_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-
-  @@map("users")
+enum AttemptStatus {
+  draft
+  submitted
 }
 
-model Task {
-  id        Int        @id @default(autoincrement())
-  title     String
-  status    TaskStatus @default(open)
-  dueDate   DateTime?  @map("due_date")
-  createdAt DateTime   @default(now()) @map("created_at")
+model Article {
+  id        Int      @id @default(autoincrement())
+  filename  String
+  sourceKey String   @map("source_key")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  @@index([status, id(sort: Desc)])
-  @@map("tasks")
+  quizzes Quiz[]
+
+  @@map("articles")
+}
+
+model Quiz {
+  id         Int      @id @default(autoincrement())
+  articleId  Int      @map("article_id")
+  title      String
+  topic      String
+  sourceName String   @map("source_name")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  article   Article    @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  questions Question[]
+  attempts  Attempt[]
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([title, id])
+  @@map("quizzes")
+}
+
+model Question {
+  id          Int          @id @default(autoincrement())
+  quizId      Int          @map("quiz_id")
+  position    Int
+  kind        QuestionKind
+  prompt      String
+  explanation String
+
+  quiz    Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  options Option[]
+
+  @@unique([quizId, position])
+  @@map("questions")
+}
+
+model Option {
+  id         Int     @id @default(autoincrement())
+  questionId Int     @map("question_id")
+  text       String
+  isCorrect  Boolean @map("is_correct")
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId, id])
+  @@map("options")
+}
+
+model Attempt {
+  id           Int           @id @default(autoincrement())
+  quizId       Int           @map("quiz_id")
+  status       AttemptStatus @default(draft)
+  currentIndex Int           @default(0) @map("current_index")
+  score        Int?
+  total        Int?
+  startedAt    DateTime      @map("started_at")
+  submittedAt  DateTime?     @map("submitted_at")
+
+  quiz    Quiz            @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  answers AttemptAnswer[]
+
+  @@index([quizId, id(sort: Desc)])
+  @@map("attempts")
+}
+
+model AttemptAnswer {
+  id                Int   @id @default(autoincrement())
+  attemptId         Int   @map("attempt_id")
+  questionId        Int   @map("question_id")
+  selectedOptionIds Int[] @map("selected_option_ids")
+
+  attempt Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@map("attempt_answers")
 }

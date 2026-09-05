@@ -11,7 +11,7 @@
  *   *.service.ts             application      — entity + ports + dto + lib only
  *   *.prisma.repository.ts   implementation   — implements a repository port, owns Prisma
  *   *.cache.repository.ts    implementation   — implements a cache port, owns ioredis
- *   *.s3.repository.ts       implementation   — implements a storage port, owns @aws-sdk
+ *   *.file.repository.ts     implementation   — implements a storage port, owns node:fs
  *   *.ports.ts               ports + public API — types only; EVERY abstract type the
  *                                                module owns, and the ONLY file other
  *                                                modules may import
@@ -24,7 +24,7 @@
  *
  * *.ports.ts carries two jobs, so keep them visibly separate inside the file:
  *   - a PORT inverts an outbound dependency the module owns several
- *     implementations of (Prisma, Redis, S3, in-memory, …). The module
+ *     implementations of (Prisma, Redis, in-memory, …). The module
  *     declares what it needs.
  *   - the PUBLIC API publishes a capability the module offers to siblings. The
  *     module declares what it gives, in plain data over ids — never entities.
@@ -70,8 +70,8 @@ const PRISMA_IMPLEMENTATION_ALLOWED = `${IMPLEMENTATION_ALLOWED}|^src/generated/
 /** The Redis implementation of a cache port. */
 const CACHE_IMPLEMENTATION_ALLOWED = `${IMPLEMENTATION_ALLOWED}|^node_modules/ioredis`;
 
-/** The S3 implementation of a storage port (node builtins are exempted in the rule itself). */
-const S3_IMPLEMENTATION_ALLOWED = `${IMPLEMENTATION_ALLOWED}|^node_modules/@aws-sdk`;
+/** The local-filesystem implementation of a source-storage port (node builtins are exempted in the rule itself). */
+const FILE_IMPLEMENTATION_ALLOWED = IMPLEMENTATION_ALLOWED;
 
 /**
  * Every file that implements a port — `<module>.<technology>.repository.ts`,
@@ -127,7 +127,7 @@ module.exports = {
             severity: "error",
             comment:
                 "A *.ports.ts file holds every abstract type the module owns — repository, cache, " +
-                "storage, and the public API siblings import — and speaks the module's domain " +
+                "and the public API siblings import — and speaks the module's domain " +
                 "vocabulary only: no frameworks, no SDKs. The public API section must stay plain " +
                 "data over ids: this rule cannot see inside the file, so keep entities out of it " +
                 "by hand.",
@@ -158,14 +158,16 @@ module.exports = {
             },
         },
         {
-            name: "s3-implementation-stays-below",
+            name: "file-implementation-stays-below",
             severity: "error",
             comment:
-                "An S3 repository implements a storage port; it may not reach up into services, " +
-                "routes or schemas, and it may not import Fastify or Prisma.",
-            from: { path: "^src/modules/[^/]+/[^/]+\\.s3\\.repository\\.ts$" },
+                "A filesystem repository implements a storage port; it may not reach up into " +
+                "services, routes or schemas, and it may not import Fastify or Prisma. Its own " +
+                "dependency is node builtins, so there is no SDK twin rule to write — the " +
+                "directory it writes to arrives from config at the composition root.",
+            from: { path: "^src/modules/[^/]+/[^/]+\\.file\\.repository\\.ts$" },
             to: {
-                pathNot: S3_IMPLEMENTATION_ALLOWED,
+                pathNot: FILE_IMPLEMENTATION_ALLOWED,
                 dependencyTypesNot: ["core"],
             },
         },
@@ -181,19 +183,6 @@ module.exports = {
                     "\\.cache\\.repository\\.ts$|^src/plugins/redis\\.ts$|^src/types/fastify\\.d\\.ts$|^test/",
             },
             to: { path: "^node_modules/ioredis" },
-        },
-        {
-            name: "aws-sdk-only-in-s3-implementations",
-            severity: "error",
-            comment:
-                "The AWS SDK may be imported only by *.s3.repository.ts files, the s3 plugin " +
-                "(client lifecycle), the fastify type augmentation, and tests. Everything else " +
-                "programs against a port — the storage twin of prisma-only-in-repositories.",
-            from: {
-                pathNot:
-                    "\\.s3\\.repository\\.ts$|^src/plugins/s3\\.ts$|^src/types/fastify\\.d\\.ts$|^test/",
-            },
-            to: { path: "^node_modules/@aws-sdk" },
         },
         {
             name: "prisma-only-in-repositories",

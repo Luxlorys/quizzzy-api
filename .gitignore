@@ -9,6 +9,8 @@ src/generated/
 .env.*
 !.env.example
 
+storage/
+
 *.log
 .DS_Store
 dependency-graph.svg

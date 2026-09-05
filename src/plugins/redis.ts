@@ -5,8 +5,8 @@ import type { FastifyInstance } from "fastify";
 /**
  * Owns the Redis client lifecycle — and nothing else. No key names, no TTLs,
  * no cache logic: the plugin provides the raw client; what caching is FOR is a
- * module's port (see modules/task/task.ports.ts), and how it maps to Redis is
- * that module's adapter (task.cache.repository.ts).
+ * module's port (see modules/quiz/quiz.ports.ts), and how it maps to Redis is
+ * that module's adapter (quiz.cache.repository.ts).
  *
  * `lazyConnect` keeps boot independent of Redis being up — the app starts and
  * serves traffic, and cache reads degrade to the database until the client

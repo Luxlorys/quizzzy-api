@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { Client } from "pg";
-import { startMinio } from "./minio.js";
 import { startRedis } from "./redis.js";
 import {
     INT_TEST_WORKERS,
@@ -15,7 +14,6 @@ import type { TestProject } from "vitest/node";
 declare module "vitest" {
     interface ProvidedContext {
         databaseUri: string;
-        s3Endpoint: string;
         redisUri: string;
     }
 }
@@ -100,22 +98,13 @@ const startPostgres = async () => {
 };
 
 const globalSetup = async ({ provide }: TestProject) => {
-    const [postgres, minio, redis] = await Promise.all([
-        startPostgres(),
-        startMinio(),
-        startRedis(),
-    ]);
+    const [postgres, redis] = await Promise.all([startPostgres(), startRedis()]);
 
     provide("databaseUri", postgres.databaseUri);
-    provide("s3Endpoint", minio.endpoint);
     provide("redisUri", redis.uri);
 
     return async () => {
-        await Promise.all([
-            postgres.container.stop(),
-            minio.container.stop(),
-            redis.container.stop(),
-        ]);
+        await Promise.all([postgres.container.stop(), redis.container.stop()]);
     };
 };
 

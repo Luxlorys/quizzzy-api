@@ -4,10 +4,9 @@ import autoload from "@fastify/autoload";
 import Fastify from "fastify";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import { loggerFor } from "./lib/logger.js";
+import articleModule from "./modules/article/index.js";
 import { healthModule } from "./modules/health/index.js";
-import { onboardingModule } from "./modules/onboarding/index.js";
-import taskModule from "./modules/task/index.js";
-import userModule from "./modules/user/index.js";
+import { quizModule } from "./modules/quiz/index.js";
 import type { AppConfig } from "./config.js";
 import type { FastifyInstance } from "fastify";
 
@@ -48,11 +47,10 @@ export const buildApp = async (config: AppConfig): Promise<FastifyInstance> => {
     });
 
     // Publishers first — consumers below read their decorations.
-    await app.register(userModule); //  mounts /api/users
-    await app.register(taskModule); //  mounts /api/tasks
+    await app.register(articleModule); // mounts /api/articles
 
     await app.register(healthModule, { prefix: "/health" });
-    await app.register(onboardingModule, { prefix: "/api/onboarding" });
+    await app.register(quizModule); //   mounts /api/quizzes and /api/attempts
 
     await app.ready();
 
