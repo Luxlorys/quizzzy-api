@@ -1,0 +1,87 @@
+{
+    "name": "fastify-clean-template",
+    "version": "1.0.0",
+    "description": "Fastify backend template with a pragmatic clean architecture: framework-free core, enforced boundaries, real tests.",
+    "type": "module",
+    "engines": {
+        "node": ">=22.0.0"
+    },
+    "scripts": {
+        "predev": "prisma generate",
+        "dev": "tsx watch src/server.ts",
+        "start": "node dist/server.js",
+        "prebuild": "prisma generate",
+        "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "boundaries": "depcruise src",
+        "boundaries:graph": "depcruise src --output-type dot | dot -T svg > dependency-graph.svg",
+        "check": "npm run typecheck && npm run lint && npm run boundaries && npm run test:unit:ci",
+        "test:unit": "vitest -c vitest-unit.config.ts",
+        "test:unit:ci": "vitest run -c vitest-unit.config.ts",
+        "pretest:int": "prisma generate",
+        "test:int": "vitest -c vitest-int.config.ts",
+        "pretest:int:ci": "prisma generate",
+        "test:int:ci": "vitest run -c vitest-int.config.ts",
+        "prisma:generate": "prisma generate",
+        "prisma:migrate:create": "prisma migrate dev --create-only",
+        "prisma:migrate:apply": "prisma migrate dev",
+        "prisma:deploy": "prisma migrate deploy",
+        "prisma:studio": "prisma studio",
+        "prepare": "husky"
+    },
+    "lint-staged": {
+        "*.{ts,mjs,js,cjs}": [
+            "prettier --write",
+            "eslint --fix"
+        ],
+        "*.prisma": [
+            "prisma format"
+        ]
+    },
+    "license": "ISC",
+    "dependencies": {
+        "@aws-sdk/client-s3": "^3.1115.0",
+        "@fastify/autoload": "^6.5.0",
+        "@fastify/basic-auth": "^6.3.0",
+        "@fastify/cors": "^11.3.0",
+        "@fastify/helmet": "^13.1.1",
+        "@fastify/rate-limit": "^11.2.0",
+        "@fastify/swagger": "^9.8.1",
+        "@fastify/swagger-ui": "^6.1.1",
+        "@prisma/adapter-pg": "^7.9.1",
+        "@prisma/client": "^7.9.1",
+        "close-with-grace": "^2.5.0",
+        "fastify": "^5.12.1",
+        "fastify-type-provider-zod": "^7.0.0",
+        "ioredis": "6.0.0",
+        "pino-pretty": "^13.1.3",
+        "zod": "^4.4.3"
+    },
+    "devDependencies": {
+        "@commitlint/cli": "^21.2.2",
+        "@commitlint/config-conventional": "^21.2.2",
+        "@eslint/js": "^10.0.1",
+        "@testcontainers/postgresql": "^12.1.0",
+        "@types/node": "^26.2.0",
+        "@types/pg": "^8.23.1",
+        "dependency-cruiser": "^18.2.0",
+        "eslint": "^10.8.1",
+        "eslint-config-prettier": "^10.1.8",
+        "husky": "^9.1.7",
+        "lint-staged": "^16.4.0",
+        "pg": "^8.23.0",
+        "prettier": "^3.9.6",
+        "prisma": "^7.9.1",
+        "testcontainers": "^12.1.0",
+        "tsc-alias": "^1.9.2",
+        "tsx": "^4.23.12",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.67.0",
+        "vite-tsconfig-paths": "^6.1.1",
+        "vitest": "^4.1.11"
+    }
+}

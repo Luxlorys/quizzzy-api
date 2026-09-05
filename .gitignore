@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+
+# Generated Prisma client — recreated by `npm run prisma:generate`
+src/generated/
+
+.env
+.env.*
+!.env.example
+
+*.log
+.DS_Store
+dependency-graph.svg
