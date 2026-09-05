@@ -12,6 +12,8 @@ import type { FastifyInstance } from "fastify";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const BODY_LIMIT_BYTES = 8 * 1024 * 1024;
+
 /**
  * The application's composition root. Everything the app is made of is
  * registered here, in an order you can read top to bottom: infrastructure
@@ -25,6 +27,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const buildApp = async (config: AppConfig): Promise<FastifyInstance> => {
     const app = Fastify({
         logger: loggerFor(config.NODE_ENV),
+        bodyLimit: BODY_LIMIT_BYTES,
     });
 
     app.decorate("config", config);

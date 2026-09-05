@@ -12,6 +12,7 @@ const security = async (fastify: FastifyInstance) => {
     await fastify.register(cors, {
         origin: true,
         credentials: true,
+        methods: ["GET", "HEAD", "POST", "PATCH", "DELETE"],
     });
 
     await fastify.register(helmet, {
