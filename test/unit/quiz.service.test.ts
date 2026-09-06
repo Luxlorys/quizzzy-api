@@ -16,7 +16,7 @@ import {
 import type { ArticlePublicApi } from "@/modules/article/ports/public-api.port.js";
 import type { QuizCache } from "@/modules/quiz/ports/cache.port.js";
 import type { QuizRepository } from "@/modules/quiz/ports/repository.port.js";
-import type { CreateQuizInput } from "@/modules/quiz/ports/service.port.js";
+import type { CreateQuizInput } from "@/modules/quiz/dto/quiz.dto.js";
 
 const NOW = "2026-03-01T10:00:00.000Z";
 

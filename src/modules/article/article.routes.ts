@@ -4,11 +4,8 @@ import {
     articleSourceResponseSchema,
     submitArticleBodySchema,
 } from "./article.schema.js";
-import {
-    toArticleResponse,
-    toArticleSourceResponse,
-    toSubmitArticleInput,
-} from "./article.dto.js";
+import { toArticleSourceResponse } from "./dto/article-source.dto.js";
+import { toArticleResponse, toSubmitArticleInput } from "./dto/article.dto.js";
 import { errorResponseSchema, noContentSchema } from "@/lib/schemas.js";
 import type { ArticleService } from "./ports/service.port.js";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";

@@ -1,4 +1,4 @@
-import { toGenerationDto } from "./generation.dto.js";
+import { toGenerationDto } from "./dto/generation.dto.js";
 import { reconcileTopic } from "./generation.entity.js";
 import {
     ArticleTooLargeError,

@@ -2,6 +2,15 @@
 
 ## Status
 
+**Superseded in part by [ADR-0011](0011-dto-folder-per-module.md)**, which moved
+the transfer types out of the ports file and put each one in `dto/<model>.dto.ts`
+together with its own mappings — including the service input types, whose place
+in `service.port.ts` was the reason `ports/dto.port.ts` had to exist at all. The
+first two bullets of the Decision below, and the "Put the DTO type in `*.dto.ts`
+instead of `*.ports.ts`" alternative it rejected, no longer hold. Everything else
+— services return DTOs, routes map both ways, no mapper names a Zod-inferred
+type, the DTO file stays plain TypeScript, DTOs carry `Date`s — still stands.
+
 Accepted. Amends the DTO clause of
 [ADR-0003](0003-ports-and-domain.md).
 

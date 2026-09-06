@@ -22,7 +22,7 @@ import type {
 import type { GenerationLock } from "@/modules/generation/ports/lock.port.js";
 import type { GenerationRepository } from "@/modules/generation/ports/repository.port.js";
 import type { GenerationService } from "@/modules/generation/ports/service.port.js";
-import type { CreateQuizInput } from "@/modules/quiz/ports/service.port.js";
+import type { CreateQuizInput } from "@/modules/quiz/dto/quiz.dto.js";
 import type {
     CreatedQuizRef,
     QuizPublicApi,

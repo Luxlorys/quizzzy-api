@@ -1,56 +1,22 @@
-import type { QuestionKind, QuizSort } from "../quiz.entity.js";
 import type { QuizCache } from "./cache.port.js";
-import type {
-    AnswerDto,
-    AttemptDto,
-    AttemptResultDto,
-    QuizDto,
-    QuizListItemDto,
-} from "./dto.port.js";
 import type { AttemptRepository, QuizRepository } from "./repository.port.js";
+import type { AttemptResultDto } from "../dto/attempt-result.dto.js";
+import type {
+    AttemptDto,
+    SaveProgressInput,
+    StartAttemptInput,
+    SubmitAttemptInput,
+} from "../dto/attempt.dto.js";
+import type { QuizListItemDto } from "../dto/quiz-list-item.dto.js";
+import type {
+    CreateQuizInput,
+    ListQuizzesInput,
+    QuizDto,
+    UpdateQuizInput,
+} from "../dto/quiz.dto.js";
 import type { ArticlePublicApi } from "@/modules/article/ports/public-api.port.js";
 import type { Clock } from "@/lib/clock.js";
 import type { Page } from "@/lib/pagination.js";
-
-export type CreateQuizInput = {
-    articleId: number;
-    title: string;
-    topic: string;
-    questions: {
-        kind: QuestionKind;
-        prompt: string;
-        explanation: string;
-        options: { text: string; isCorrect: boolean }[];
-    }[];
-};
-
-export type UpdateQuizInput = {
-    id: number;
-    title?: string;
-    topic?: string;
-};
-
-export type ListQuizzesInput = {
-    limit: number;
-    cursor?: number;
-    search?: string;
-    sort: QuizSort;
-};
-
-export type StartAttemptInput = {
-    quizId: number;
-};
-
-export type SaveProgressInput = {
-    id: number;
-    currentIndex: number;
-    answers: AnswerDto[];
-};
-
-export type SubmitAttemptInput = {
-    id: number;
-    answers: AnswerDto[];
-};
 
 export type QuizService = {
     createQuiz: (input: CreateQuizInput) => Promise<QuizDto>;

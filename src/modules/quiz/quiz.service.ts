@@ -7,12 +7,10 @@ import {
     startAttempt,
     submitAttempt,
 } from "./quiz.entity.js";
-import {
-    toAttemptDto,
-    toAttemptResultDto,
-    toQuizDto,
-    toQuizPageDto,
-} from "./quiz.dto.js";
+import { toAttemptResultDto } from "./dto/attempt-result.dto.js";
+import { toAttemptDto } from "./dto/attempt.dto.js";
+import { toQuizPageDto } from "./dto/quiz-list-item.dto.js";
+import { toQuizDto } from "./dto/quiz.dto.js";
 import { AttemptNotFoundError, QuizNotFoundError } from "./quiz.errors.js";
 import type { Attempt, Quiz } from "./quiz.entity.js";
 import type { QuizService, QuizServiceDeps } from "./ports/service.port.js";

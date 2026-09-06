@@ -62,9 +62,10 @@ modules/task/
 ├── index.ts                   # composition root: implementations → service → routes
 ├── task.routes.ts             # HTTP: schemas on routes, thin inline handlers
 ├── task.schema.ts             # the wire contract (Zod: validated in, documented out)
-├── ports/                     # EVERY abstract type, one *.port.ts per role:
-│                              #   repository / cache / dto / service / public-api
-├── task.dto.ts                # the mappings: wire → input, domain → DTO → wire
+├── ports/                     # EVERY dependency inverted or published, one per role:
+│                              #   repository / cache / service / public-api
+├── dto/                       # EVERY transfer model, one *.dto.ts per model:
+│                              #   the type, its input, and all three mappings
 ├── task.service.ts            # use cases (no fastify, no zod, no prisma, no redis)
 ├── task.prisma.repository.ts  # implements TaskRepository — the only file with Prisma
 ├── task.cache.repository.ts   # implements TaskCache — the only file with ioredis

@@ -1,6 +1,25 @@
-import type { Generation } from "./generation.entity.js";
-import type { GenerationDto } from "./ports/dto.port.js";
-import type { StartGenerationInput } from "./ports/service.port.js";
+import type { Generation, GenerationStatus } from "../generation.entity.js";
+
+export type StartGenerationInput = {
+    articleId: number;
+};
+
+export type GenerationDto = {
+    id: number;
+    articleId: number;
+    status: GenerationStatus;
+    quizId: number | null;
+    failureCode: string | null;
+    failureMessage: string | null;
+    createdAt: Date;
+    finishedAt: Date | null;
+};
+
+export const toStartGenerationInput = (body: {
+    articleId: number;
+}): StartGenerationInput => ({
+    articleId: body.articleId,
+});
 
 export const toGenerationDto = (generation: Generation): GenerationDto => ({
     id: generation.id,
@@ -11,12 +30,6 @@ export const toGenerationDto = (generation: Generation): GenerationDto => ({
     failureMessage: generation.failureMessage,
     createdAt: generation.createdAt,
     finishedAt: generation.finishedAt,
-});
-
-export const toStartGenerationInput = (body: {
-    articleId: number;
-}): StartGenerationInput => ({
-    articleId: body.articleId,
 });
 
 export const toGenerationResponse = (dto: GenerationDto) => ({

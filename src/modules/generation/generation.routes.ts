@@ -3,7 +3,10 @@ import {
     generationResponseSchema,
     startGenerationBodySchema,
 } from "./generation.schema.js";
-import { toGenerationResponse, toStartGenerationInput } from "./generation.dto.js";
+import {
+    toGenerationResponse,
+    toStartGenerationInput,
+} from "./dto/generation.dto.js";
 import { errorResponseSchema } from "@/lib/schemas.js";
 import type { GenerationService } from "./ports/service.port.js";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";

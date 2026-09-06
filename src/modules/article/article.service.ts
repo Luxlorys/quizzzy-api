@@ -1,5 +1,6 @@
 import { acceptSubmission, draftArticle } from "./article.entity.js";
-import { toArticleDto, toArticleSourceDto } from "./article.dto.js";
+import { toArticleSourceDto } from "./dto/article-source.dto.js";
+import { toArticleDto } from "./dto/article.dto.js";
 import { ArticleNotFoundError } from "./article.errors.js";
 import type { Article } from "./article.entity.js";
 import type { ArticleService, ArticleServiceDeps } from "./ports/service.port.js";

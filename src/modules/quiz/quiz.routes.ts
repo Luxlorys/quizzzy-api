@@ -12,18 +12,20 @@ import {
     submitAttemptBodySchema,
     updateQuizBodySchema,
 } from "./quiz.schema.js";
+import { toAttemptResultResponse } from "./dto/attempt-result.dto.js";
 import {
     toAttemptResponse,
-    toAttemptResultResponse,
-    toCreateQuizInput,
-    toListQuizzesInput,
-    toQuizPageResponse,
-    toQuizResponse,
     toSaveProgressInput,
     toStartAttemptInput,
     toSubmitAttemptInput,
+} from "./dto/attempt.dto.js";
+import { toQuizPageResponse } from "./dto/quiz-list-item.dto.js";
+import {
+    toCreateQuizInput,
+    toListQuizzesInput,
+    toQuizResponse,
     toUpdateQuizInput,
-} from "./quiz.dto.js";
+} from "./dto/quiz.dto.js";
 import { errorResponseSchema, noContentSchema } from "@/lib/schemas.js";
 import type { QuizService } from "./ports/service.port.js";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";

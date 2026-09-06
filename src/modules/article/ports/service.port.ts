@@ -1,11 +1,7 @@
-import type { ArticleDto, ArticleSourceDto } from "./dto.port.js";
 import type { ArticleRepository } from "./repository.port.js";
 import type { ArticleSourceRepository } from "./source.port.js";
-
-export type SubmitArticleInput = {
-    filename: string;
-    html: string;
-};
+import type { ArticleSourceDto } from "../dto/article-source.dto.js";
+import type { ArticleDto, SubmitArticleInput } from "../dto/article.dto.js";
 
 export type ArticleService = {
     submitArticle: (input: SubmitArticleInput) => Promise<ArticleDto>;

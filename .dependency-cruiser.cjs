@@ -7,11 +7,11 @@
  *
  *   index.ts                     composition root — may see everything in the module
  *   *.routes.ts, *.schema.ts     interface layer  — fastify + zod, calls the service
- *   *.dto.ts                     transfer mappings — domain → DTO → wire, plain TypeScript
  *   <module>.service.ts          application      — entity + ports + dto + lib only
  *   <module>.<tech>.repository.ts implementation  — implements a persistence-shaped port
  *   <module>.<tech>.service.ts   implementation   — implements an external-service port
  *   ports/*.port.ts              ports + public API — types only, one file per role
+ *   dto/*.dto.ts                 transfer models  — the type AND its mappings, plain TypeScript
  *   *.entity.ts, *.errors.ts     domain           — pure TypeScript
  *
  * Port implementations come in two families, and the suffix says which kind of
@@ -32,8 +32,8 @@
  *     generator.port.ts, tokens.port.ts — a PORT inverts an outbound
  *     dependency the module owns several implementations of. The module
  *     declares what it needs.
- *   - dto.port.ts, service.port.ts — the transfer models the service takes and
- *     returns, and the service interface itself.
+ *   - service.port.ts — the <Name>Service interface and its Deps. Its inputs
+ *     and outputs are named from dto/, not declared here.
  *   - public-api.port.ts — the capability the module offers to siblings, in
  *     plain data over ids. This is the ONLY file another module may import,
  *     and `modules-are-islands` below enforces exactly that: with the public
@@ -58,6 +58,15 @@
 /** Every ports/*.port.ts file, in any module. */
 const PORT_FILES = "^src/modules/[^/]+/ports/[^/]+\\.port\\.ts$";
 
+/**
+ * Every dto/*.dto.ts file, in any module: one transfer model per file, holding
+ * the type AND the mappings around it. This layer sits between the domain and
+ * ports/ — it imports the entity it maps from and nothing else in the module,
+ * which is what lets service.port.ts name its inputs and outputs from here
+ * without a cycle.
+ */
+const DTO_FILES = "^src/modules/[^/]+/dto/[^/]+\\.dto\\.ts$";
+
 /** The one port file another module may import. */
 const PUBLIC_API_FILE = "^src/modules/[^/]+/ports/public-api\\.port\\.ts$";
 
@@ -70,25 +79,28 @@ const PURE_LIB = "^src/lib/(errors|clock|pagination)\\.ts$";
 /** What domain files (entities, errors) may depend on: each other and the pure lib files. */
 const DOMAIN_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${PURE_LIB}`;
 
-/** What a service may depend on: the domain, its ports, other modules' published APIs (also a ports/ file), its DTO mappings, other application services, pure lib. */
-const SERVICE_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors|dto)\\.ts$|${APPLICATION_SERVICE_FILE}|${PORT_FILES}|${PURE_LIB}`;
+/** What a service may depend on: the domain, its ports, other modules' published APIs (also a ports/ file), its transfer models, other application services, pure lib. */
+const SERVICE_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${APPLICATION_SERVICE_FILE}|${DTO_FILES}|${PORT_FILES}|${PURE_LIB}`;
 
 /**
- * What a *.dto.ts file may depend on: the domain it maps from, the ports/ files
- * that declare the DTO and input types, and pure lib. A service returns DTOs,
- * so this file has to stay as framework-free as the service — Zod in particular.
+ * What a dto/*.dto.ts file may depend on: the domain it maps from, its sibling
+ * transfer models, and pure lib. Notably NOT ports/ — the dependency runs the
+ * other way, and a DTO that reached for a repository port would be reading
+ * storage vocabulary into the wire contract. A service returns DTOs, so this
+ * file has to stay as framework-free as the service — Zod in particular.
  */
-const DTO_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors|dto)\\.ts$|${PORT_FILES}|${PURE_LIB}`;
+const DTO_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${DTO_FILES}|${PURE_LIB}`;
 
 /**
- * What a ports/*.port.ts file may depend on: the domain, pure lib types, other
- * port files in its own module, and other modules' public-api.port.ts (that is
- * how a consumer names a published API). Never a framework, an SDK, a service
- * or an implementation.
+ * What a ports/*.port.ts file may depend on: the domain, its module's transfer
+ * models (that is how service.port.ts names what the service takes and
+ * returns), pure lib types, other port files in its own module, and other
+ * modules' public-api.port.ts (that is how a consumer names a published API).
+ * Never a framework, an SDK, a service or an implementation.
  */
-const PORT_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${PORT_FILES}|${PURE_LIB}`;
+const PORT_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${DTO_FILES}|${PORT_FILES}|${PURE_LIB}`;
 
-/** What EVERY port implementation may depend on regardless of technology: the domain, the module's ports, pure lib. Its own SDK comes from its ADAPTERS entry. */
+/** What EVERY port implementation may depend on regardless of technology: the domain, the module's ports, pure lib. Never a DTO — an adapter speaks entities, because that is the vocabulary its port is written in. Its own SDK comes from its ADAPTERS entry. */
 const IMPLEMENTATION_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${PORT_FILES}|${PURE_LIB}`;
 
 /**
@@ -238,12 +250,13 @@ module.exports = {
             name: "dto-stays-pure",
             severity: "error",
             comment:
-                "A *.dto.ts holds the two mappings around the transfer model — domain → DTO, which the " +
-                "service calls, and DTO → wire, which the route calls. Because the service imports it, " +
-                "it must stay plain TypeScript: no Zod, no Fastify, no SDK, no port implementation. " +
-                "The wire contract stays in *.schema.ts and type-checks toXResponse where the route " +
-                "returns it.",
-            from: { path: "^src/modules/[^/]+/[^/]+\\.dto\\.ts$" },
+                "A dto/*.dto.ts holds one transfer model — its type, the input it is built from, and " +
+                "every mapping around it: wire → input, domain → DTO, DTO → wire. Because the service " +
+                "imports it, it must stay plain TypeScript: no Zod, no Fastify, no SDK, no port " +
+                "implementation — and no ports/ either, since ports/ depends on this layer, not the " +
+                "other way round. The wire contract stays in *.schema.ts and type-checks toXResponse " +
+                "where the route returns it.",
+            from: { path: DTO_FILES },
             to: { pathNot: DTO_ALLOWED },
         },
         {
@@ -251,8 +264,9 @@ module.exports = {
             severity: "error",
             comment:
                 "A ports/*.port.ts file holds abstract types and nothing else — one file per role: " +
-                "repository, cache, source, lock, generator, tokens, dto, service, and the " +
-                "public-api.port.ts siblings import. It speaks the module's domain vocabulary only: " +
+                "repository, cache, source, lock, generator, tokens, service, and the " +
+                "public-api.port.ts siblings import. It speaks the module's domain and transfer " +
+                "vocabulary only: " +
                 "no frameworks, no SDKs. public-api.port.ts must stay plain data over ids: this rule " +
                 "cannot see inside the file, so keep entities out of it by hand.",
             from: { path: PORT_FILES },
@@ -292,7 +306,8 @@ module.exports = {
                 "ports/public-api.port.ts. Everything else in that folder — entity, errors, the other " +
                 "port files, service, implementations — is private. With the published API in a file " +
                 "of its own, this is now an enforced rule rather than a convention: taking a " +
-                "repository port or a DTO across a border fails here. The implementation still arrives " +
+                "repository port or a transfer model across a border fails here. The implementation " +
+                "still arrives " +
                 "as a decoration wired in index.ts (see docs/recipes.md); the type is all that crosses.",
             from: { path: "^src/modules/([^/]+)/" },
             to: {

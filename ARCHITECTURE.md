@@ -22,15 +22,18 @@ layering exists **inside** the module, not as app-wide `domain/`, `adapters/`,
 ```
 modules/task/
 ├── index.ts                   composition root
-├── ports/                     EVERY abstract type, one file per role
+├── ports/                     EVERY dependency the module inverts or publishes
 │   ├── repository.port.ts     TaskRepository
 │   ├── cache.port.ts          TaskCache
-│   ├── dto.port.ts            TaskDto and friends
-│   ├── service.port.ts        inputs, TaskService, TaskServiceDeps
+│   ├── service.port.ts        TaskService, TaskServiceDeps
 │   └── public-api.port.ts     TaskPublicApi — the ONLY file siblings may import
+├── dto/                       EVERY transfer model, one file per model,
+│   │                          each holding its type AND its mappings
+│   ├── task.dto.ts            CreateTaskInput, TaskDto, toCreateTaskInput,
+│   │                          toTaskDto, toTaskResponse
+│   └── task-summary.dto.ts    TaskSummaryDto + its mappings
 ├── task.routes.ts   ┐
 ├── task.schema.ts   ┘         interface layer (Fastify + Zod)
-├── task.dto.ts                the mappings: wire → input, domain → DTO → wire
 ├── task.service.ts            application layer (implements TaskService)
 ├── task.prisma.repository.ts  implements TaskRepository (Prisma)
 ├── task.cache.repository.ts   implements TaskCache (Redis)
@@ -51,9 +54,9 @@ flowchart TD
             R["task.routes.ts"]
             SCH["task.schema.ts<br/>wire contract"]
         end
-        DTO["task.dto.ts<br/>wire → input, domain → DTO → wire"]
+        DTO["dto/*.dto.ts<br/>type + wire → input, domain → DTO → wire"]
         SVC["task.service.ts<br/>use cases"]
-        PORT["ports/*.port.ts<br/>(all abstract types)"]
+        PORT["ports/*.port.ts<br/>(what the module needs and offers)"]
         subgraph domain["domain"]
             E["task.entity.ts<br/>rules as pure functions"]
             ERR["task.errors.ts"]
@@ -75,6 +78,7 @@ flowchart TD
     DTO --> E
     SVC -->|consumes TaskRepository + TaskCache| PORT
     SVC --> E
+    PORT -->|names TaskDto, CreateTaskInput| DTO
     SVC -. implements TaskService .-> PORT
     DB -. implements TaskRepository .-> PORT
     CACHE -. implements TaskCache .-> PORT
@@ -95,18 +99,18 @@ per-technology rules — `<tech>-implementation-stays-below` and
 `<tech>-sdk-is-contained` — are generated from the `ADAPTERS` table at the top
 of that file, one row per technology.
 
-| Layer (file)                   | May import                                                                      | Must never import                                                 |
-| ------------------------------ | ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `*.entity.ts`, `*.errors.ts`   | each other, `lib/errors`, `lib/clock`, `lib/pagination`                         | **anything else** — no npm package, no Fastify, no Zod, no Prisma |
-| `ports/*.port.ts`              | domain files, its own port files, other modules' `public-api.port.ts`, pure lib | frameworks, SDKs, implementations, services                       |
-| `*.dto.ts` (transfer mappings) | domain files, its `ports/`, pure lib                                            | Zod, Fastify, SDKs, implementations, services, routes, schemas    |
-| `<module>.service.ts`          | domain, its ports, its DTO mappings, other modules' published API, pure lib     | Fastify, Zod, Prisma, ioredis, implementations, routes, schemas   |
-| `*.prisma.repository.ts`       | domain, its ports, `src/generated/prisma`, pure lib                             | Fastify, services, routes, schemas, other implementations         |
-| `*.cache.repository.ts`        | domain, its ports, `ioredis`, pure lib                                          | Fastify, Prisma, services, routes, schemas, other implementations |
-| `*.s3.repository.ts`           | domain, its ports, `@aws-sdk/*`, node builtins, pure lib                        | Fastify, Prisma, services, routes, schemas, other implementations |
-| `*.anthropic.service.ts`       | domain, its ports, `@anthropic-ai/sdk`, `zod`, `lib/article-text`, pure lib     | Fastify, Prisma, services, routes, schemas, other implementations |
-| `*.routes.ts`, `*.schema.ts`   | everything in the module except an implementation; `lib`                        | Prisma, other modules                                             |
-| `index.ts`                     | everything in its module                                                        | other modules' internals                                          |
+| Layer (file)                     | May import                                                                                  | Must never import                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `*.entity.ts`, `*.errors.ts`     | each other, `lib/errors`, `lib/clock`, `lib/pagination`                                     | **anything else** — no npm package, no Fastify, no Zod, no Prisma            |
+| `dto/*.dto.ts` (transfer models) | domain files, its sibling DTO files, pure lib                                               | **`ports/`**, Zod, Fastify, SDKs, implementations, services, routes, schemas |
+| `ports/*.port.ts`                | domain files, its `dto/`, its own port files, other modules' `public-api.port.ts`, pure lib | frameworks, SDKs, implementations, services                                  |
+| `<module>.service.ts`            | domain, its `dto/`, its ports, other modules' published API, pure lib                       | Fastify, Zod, Prisma, ioredis, implementations, routes, schemas              |
+| `*.prisma.repository.ts`         | domain, its ports, `src/generated/prisma`, pure lib                                         | Fastify, **`dto/`**, services, routes, schemas, other implementations        |
+| `*.cache.repository.ts`          | domain, its ports, `ioredis`, pure lib                                                      | Fastify, Prisma, services, routes, schemas, other implementations            |
+| `*.s3.repository.ts`             | domain, its ports, `@aws-sdk/*`, node builtins, pure lib                                    | Fastify, Prisma, services, routes, schemas, other implementations            |
+| `*.anthropic.service.ts`         | domain, its ports, `@anthropic-ai/sdk`, `zod`, `lib/article-text`, pure lib                 | Fastify, Prisma, services, routes, schemas, other implementations            |
+| `*.routes.ts`, `*.schema.ts`     | everything in the module except an implementation; `lib`                                    | Prisma, other modules                                                        |
+| `index.ts`                       | everything in its module                                                                    | other modules' internals                                                     |
 
 `<module>.service.ts` (one dot) is the application service;
 `<module>.<tech>.service.ts` (two dots) is an outbound adapter, and the rules
@@ -184,8 +188,8 @@ typed by a **public API the providing module publishes in its own
   boundary — the published API only admits ids and plain inputs.
 
 **`ports/` carries two jobs**, kept apart by filename — the outbound port files
-(`repository.port.ts`, `cache.port.ts`, `lock.port.ts`, …) plus the service's own
-`dto.port.ts` and `service.port.ts`, and then `public-api.port.ts` on its own:
+(`repository.port.ts`, `cache.port.ts`, `lock.port.ts`, …) plus the module's own
+`service.port.ts`, and then `public-api.port.ts` on its own:
 
 |                  | The port files                                                 | `public-api.port.ts`                    |
 | ---------------- | -------------------------------------------------------------- | --------------------------------------- |
@@ -298,20 +302,20 @@ One kind of object per boundary. TypeScript's structural typing does the
 conversion work cheaply, but the _types_ stay separate because the boundaries
 change for different reasons.
 
-| #   | Kind            | Lives in                                   | Built with                    | Purpose                                                                                        |
-| --- | --------------- | ------------------------------------------ | ----------------------------- | ---------------------------------------------------------------------------------------------- |
-| 1   | **Wire shape**  | `*.schema.ts`                              | Zod                           | The public HTTP contract: what is validated in and serialized out, and what OpenAPI documents. |
-| 2   | **DTO**         | `ports/dto.port.ts` (mapped in `*.dto.ts`) | plain `type` + mappers        | What a service takes and returns: the transfer models that cross interface ↔ application.      |
-| 3   | **Domain type** | `*.entity.ts`                              | plain `type` + pure functions | The business object and its rules. The vocabulary _inside_ a use case.                         |
-| 4   | **Row**         | Prisma generated client                    | `schema.prisma`               | The shape of a database row. A persistence detail.                                             |
+| #   | Kind            | Lives in                                  | Built with                    | Purpose                                                                                        |
+| --- | --------------- | ----------------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------- |
+| 1   | **Wire shape**  | `*.schema.ts`                             | Zod                           | The public HTTP contract: what is validated in and serialized out, and what OpenAPI documents. |
+| 2   | **DTO**         | `dto/<model>.dto.ts` (type + its mappers) | plain `type` + mappers        | What a service takes and returns: the transfer models that cross interface ↔ application.      |
+| 3   | **Domain type** | `*.entity.ts`                             | plain `type` + pure functions | The business object and its rules. The vocabulary _inside_ a use case.                         |
+| 4   | **Row**         | Prisma generated client                   | `schema.prisma`               | The shape of a database row. A persistence detail.                                             |
 
 Hard rules:
 
 - A **request model never reaches a service.** The route maps it first:
   `toCreateTaskInput(request.body)` and `toListTasksInput(request.query)` in
-  `task.dto.ts` turn the Zod-inferred shape into the service's own declared
-  input (`CreateTaskInput`, `ListTasksInput`, in `ports/service.port.ts`
-  alongside the `TaskService` interface they belong to). A handler never constructs a service
+  `dto/task.dto.ts` turn the Zod-inferred shape into the service's own declared
+  input (`CreateTaskInput`, `ListTasksInput`, declared in that same file
+  beside the `TaskDto` they are the other half of). A handler never constructs a service
   input inline either — `toSetAvatarInput(id, body, contentType)` assembles the
   one that comes from three parts of the request. Only a bare scalar crosses
   unmapped: `service.getTask(request.params.id)` has no model to convert.
@@ -320,7 +324,7 @@ Hard rules:
   touching the API. Unlike the input rule above, this one _is_ checked: the
   service's declared return type is `TaskDto`.
 - A **service never returns a wire shape either.** `toTaskResponse()` — the
-  same `task.dto.ts`, one hop later — is the one place a DTO becomes JSON
+  same `dto/task.dto.ts`, one hop later — is the one place a DTO becomes JSON
   (dates → ISO strings), and the route is its only caller. The DTO carries
   `Date`s on purpose: serialization is the wire's business, and a sibling
   module reading a published capability should not have to parse dates back.
@@ -330,8 +334,10 @@ Hard rules:
   other direction — `task.cache.repository.ts` revives JSON strings back into
   `Date`s before a `Task` leaves it.
 
-`task.dto.ts` is plain TypeScript — no Zod, no Fastify (`dto-stays-pure`) —
-which is what lets a framework-free service import it. So neither mapper names
+A `dto/*.dto.ts` file is plain TypeScript — no Zod, no Fastify
+(`dto-stays-pure`) — which is what lets a framework-free service import it. It
+may not import `ports/` either: the dependency runs the other way, since
+`service.port.ts` names its inputs and outputs from here. So neither mapper names
 a Zod-inferred type: each declares the wire shape it accepts or produces as a
 plain structural type, and the route is where the two meet. `toTaskResponse()`
 is checked against the `response` schema; `toCreateTaskInput()` is checked
@@ -465,10 +471,12 @@ ADR in [docs/adr/](docs/adr/).
   deleting a folder.
 - **No entity classes** (ADR-0003). Domain = types + pure functions, not
   objects with methods.
-- **No DTO per layer** (ADR-0008). One `*.dto.ts` per module owns the
-  interface ↔ application boundary in both directions — the service's declared
-  inputs and its `<Name>Dto` return type. There is no third model per layer,
-  and a row is still mapped inside the file that read it.
+- **No DTO per layer** (ADR-0008, ADR-0011). One `dto/<model>.dto.ts` owns
+  that model's whole edge in both directions — the service's declared input and
+  its `<Name>Dto` return type, with the three mappings between them. There is no
+  third model per layer, a row is still mapped inside the file that read it, and
+  the service ↔ repository hop needs no transfer model at all: a port is written
+  in the module's own domain vocabulary, so an entity crosses it unmapped.
 - **No dead code — infrastructure is either exercised or absent.** The S3
   integration ships because every line of it runs against MinIO in the
   integration lane; auth, transactions and typed JSON columns remain
@@ -501,7 +509,11 @@ ADR in [docs/adr/](docs/adr/).
   `*.gateway.ts` or `*.client.ts` family of its own; the one-dot/two-dot
   distinction against `<module>.service.ts` is the price of reusing the word.
 - **No barrel in `ports/`.** A `ports/index.ts` re-export would restore the
-  single import path and destroy the rule the split was made for.
+  single import path and destroy the rule the split was made for. `dto/` has no
+  barrel either.
+- **No transfer model under `ports/`** (ADR-0011). A file under `ports/` names
+  something the module needs from outside or offers to siblings; a DTO does
+  neither. It lives in `dto/`, and `ports/` depends on it — not the reverse.
 
 ---
 
@@ -511,19 +523,21 @@ Work inside-out; the boundaries hold you to it (`npm run check`).
 
 1. **Domain** — `<name>.entity.ts` + `<name>.errors.ts`: types, rules, named
    errors. Unit-test them directly.
-2. **Ports** — `<name>/ports/`, one `*.port.ts` per role: the outbound ports
+2. **DTO** — `<name>/dto/<model>.dto.ts`, one file per transfer model: the
+   `<Name>Dto` type, the input type the use case accepts, and `toXDto()`
+   (domain → DTO). Plain TypeScript — it imports the entity and nothing else in
+   the module; this is where you decide what leaves the module at all. The wire
+   mappers join it in step 6.
+3. **Ports** — `<name>/ports/`, one `*.port.ts` per role: the outbound ports
    (`repository.port.ts`, `cache.port.ts`, and one file per further dependency,
    named for what it inverts — the narrowest interface the use cases need, in
-   domain vocabulary), `dto.port.ts` for the `<Name>Dto` family,
-   `service.port.ts` for the input types plus the `<Name>Service` interface and
-   its `Deps`, and — if the feature offers something to other modules —
-   `public-api.port.ts` holding `<Name>PublicApi` over ids and plain inputs
-   (type the decoration with it in `src/types/fastify.d.ts`). The published API
-   gets its own file because that is what lets `modules-are-islands` enforce the
-   border rather than merely document it.
-3. **DTO** — `<name>.dto.ts`: `toXDto()` (domain → DTO) over the `<Name>Dto`
-   declared in step 2. Plain TypeScript; this is where you decide what leaves
-   the module at all. The input mappers join it in step 6.
+   domain vocabulary), `service.port.ts` for the `<Name>Service` interface and
+   its `Deps`, written over the types from step 2, and — if the feature offers
+   something to other modules — `public-api.port.ts` holding `<Name>PublicApi`
+   over ids and plain inputs (type the decoration with it in
+   `src/types/fastify.d.ts`). The published API gets its own file because that is
+   what lets `modules-are-islands` enforce the border rather than merely
+   document it.
 4. **Service** — `<name>.service.ts`: use cases against the ports + clock,
    each ending in `toXDto()`. Unit-test with in-memory port implementations.
 5. **Schema** — `schema.prisma` model + `npm run prisma:migrate:create`
@@ -536,7 +550,8 @@ Work inside-out; the boundaries hold you to it (`npm run check`).
    same thing the filename does (`AvatarRepository`, `createS3AvatarRepository`,
    `avatars`).
 6. **Interface** — `<name>.schema.ts` (wire shapes), `toXInput()` and
-   `toXResponse()` added to `<name>.dto.ts` (wire → input, DTO → wire), and
+   `toXResponse()` added to each `dto/<model>.dto.ts` (wire → input, DTO →
+   wire), and
    `<name>.routes.ts` (schemas on routes, thin inline handlers that map both
    ways and do nothing else).
 7. **Compose** — `index.ts` wires implementations → service → routes; register

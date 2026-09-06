@@ -1,4 +1,4 @@
-import type { CreateQuizInput } from "./service.port.js";
+import type { CreateQuizInput } from "../dto/quiz.dto.js";
 
 export type CreatedQuizRef = {
     id: number;

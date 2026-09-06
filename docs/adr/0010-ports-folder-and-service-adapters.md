@@ -2,6 +2,13 @@
 
 ## Status
 
+**Amended by [ADR-0011](0011-dto-folder-per-module.md)**: `dto.port.ts` is gone
+from the roles table below, and `service.port.ts` no longer holds the input
+types. Both moved to a `dto/` folder — one transfer model per file, each holding
+its type and its mappings — because a transfer model inverts nothing and so was
+never a port. The rest of the roles table, and the two implementation families,
+stand as written.
+
 Accepted. Supersedes the first bullet of [ADR-0007](0007-one-ports-file.md)'s
 Decision ("One `*.ports.ts` per module holds every abstract type it owns") and
 narrows its second ("Every port implementation is named
@@ -53,7 +60,9 @@ payments, search), the more files inherit a name that describes none of them.
     | `source.port.ts`, `lock.port.ts`, `generator.port.ts`, `tokens.port.ts` | the module's other outbound ports, named for what they invert                     |
     | `dto.port.ts`                                                           | the `<Name>Dto` family the service returns                                        |
     | `service.port.ts`                                                       | the service's input types, its `<Name>Service` interface, and `<Name>ServiceDeps` |
-    | `public-api.port.ts`                                                    | `<Name>PublicApi` — the only file another module may import                       |
+
+    (ADR-0011 later removed `dto.port.ts` and the input types from this table.)
+    | `public-api.port.ts` | `<Name>PublicApi` — the only file another module may import |
 
     A new outbound dependency is a new file named after the role, not a section
     appended to an existing one.
