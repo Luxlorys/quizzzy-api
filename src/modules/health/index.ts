@@ -4,6 +4,7 @@ import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 const healthResponseSchema = z.object({
     status: z.enum(["ok", "degraded"]),
     database: z.enum(["up", "down"]),
+    cache: z.enum(["up", "down"]),
 });
 
 export const healthModule: FastifyPluginAsyncZod = async (fastify) => {
@@ -12,7 +13,7 @@ export const healthModule: FastifyPluginAsyncZod = async (fastify) => {
         {
             schema: {
                 tags: ["health"],
-                summary: "Liveness and database connectivity",
+                summary: "Liveness, database, and cache/lock-store connectivity",
                 response: {
                     200: healthResponseSchema,
                     503: healthResponseSchema,
@@ -20,20 +21,35 @@ export const healthModule: FastifyPluginAsyncZod = async (fastify) => {
             },
         },
         async (_request, reply) => {
-            try {
-                await fastify.prisma.$queryRaw`SELECT 1`;
-            } catch (error) {
-                fastify.log.error(
-                    { err: error },
-                    "health check: database unreachable",
-                );
+            const [database, cache] = await Promise.all([
+                fastify.prisma.$queryRaw`SELECT 1`
+                    .then(() => "up" as const)
+                    .catch((error: unknown) => {
+                        fastify.log.error(
+                            { err: error },
+                            "health check: database unreachable",
+                        );
 
-                return reply
-                    .code(503)
-                    .send({ status: "degraded", database: "down" } as const);
-            }
+                        return "down" as const;
+                    }),
+                fastify.redis
+                    .ping()
+                    .then(() => "up" as const)
+                    .catch((error: unknown) => {
+                        fastify.log.error(
+                            { err: error },
+                            "health check: cache unreachable",
+                        );
 
-            return { status: "ok", database: "up" } as const;
+                        return "down" as const;
+                    }),
+            ]);
+
+            const status = database === "up" && cache === "up" ? "ok" : "degraded";
+
+            return reply
+                .code(status === "ok" ? 200 : 503)
+                .send({ status, database, cache });
         },
     );
 };

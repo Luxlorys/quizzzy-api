@@ -1,5 +1,5 @@
 import type { Quiz } from "@/modules/quiz/quiz.entity.js";
-import type { QuizCache } from "@/modules/quiz/quiz.ports.js";
+import type { QuizCache } from "@/modules/quiz/ports/cache.port.js";
 
 /**
  * A genuine implementation of the QuizCache port, not a mock. It honors the

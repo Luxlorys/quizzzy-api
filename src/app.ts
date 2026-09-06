@@ -5,14 +5,20 @@ import Fastify from "fastify";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import { loggerFor } from "./lib/logger.js";
 import articleModule from "./modules/article/index.js";
+import generationModule from "./modules/generation/index.js";
 import { healthModule } from "./modules/health/index.js";
-import { quizModule } from "./modules/quiz/index.js";
+import quizModule from "./modules/quiz/index.js";
 import type { AppConfig } from "./config.js";
+import type { GenerationModuleOptions } from "./modules/generation/index.js";
 import type { FastifyInstance } from "fastify";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BODY_LIMIT_BYTES = 8 * 1024 * 1024;
+
+export type BuildAppOverrides = {
+    generation?: GenerationModuleOptions;
+};
 
 /**
  * The application's composition root. Everything the app is made of is
@@ -24,7 +30,10 @@ const BODY_LIMIT_BYTES = 8 * 1024 * 1024;
  * configuration (see test/int/helpers/build-test-app.ts) — no environment
  * mutation, no mocking.
  */
-export const buildApp = async (config: AppConfig): Promise<FastifyInstance> => {
+export const buildApp = async (
+    config: AppConfig,
+    overrides: BuildAppOverrides = {},
+): Promise<FastifyInstance> => {
     const app = Fastify({
         logger: loggerFor(config.NODE_ENV),
         bodyLimit: BODY_LIMIT_BYTES,
@@ -54,6 +63,7 @@ export const buildApp = async (config: AppConfig): Promise<FastifyInstance> => {
 
     await app.register(healthModule, { prefix: "/health" });
     await app.register(quizModule); //   mounts /api/quizzes and /api/attempts
+    await app.register(generationModule, overrides.generation ?? {}); // mounts /api/generations
 
     await app.ready();
 

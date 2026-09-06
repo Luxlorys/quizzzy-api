@@ -1,9 +1,6 @@
 import type { Article } from "./article.entity.js";
-import type {
-    ArticleDto,
-    ArticleSourceDto,
-    SubmitArticleInput,
-} from "./article.ports.js";
+import type { ArticleDto, ArticleSourceDto } from "./ports/dto.port.js";
+import type { SubmitArticleInput } from "./ports/service.port.js";
 
 export const toSubmitArticleInput = (body: {
     filename: string;

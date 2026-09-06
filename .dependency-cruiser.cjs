@@ -5,81 +5,203 @@
  *
  * Layer map inside a module (dependencies point downward only):
  *
- *   index.ts                 composition root — may see everything in the module
- *   *.routes.ts, *.schema.ts interface layer  — fastify + zod, calls the service
- *   *.dto.ts                 transfer mappings — domain → DTO → wire, plain TypeScript
- *   *.service.ts             application      — entity + ports + dto + lib only
- *   *.prisma.repository.ts   implementation   — implements a repository port, owns Prisma
- *   *.cache.repository.ts    implementation   — implements a cache port, owns ioredis
- *   *.file.repository.ts     implementation   — implements a storage port, owns node:fs
- *   *.ports.ts               ports + public API — types only; EVERY abstract type the
- *                                                module owns, and the ONLY file other
- *                                                modules may import
- *   *.entity.ts, *.errors.ts domain           — pure TypeScript
+ *   index.ts                     composition root — may see everything in the module
+ *   *.routes.ts, *.schema.ts     interface layer  — fastify + zod, calls the service
+ *   *.dto.ts                     transfer mappings — domain → DTO → wire, plain TypeScript
+ *   <module>.service.ts          application      — entity + ports + dto + lib only
+ *   <module>.<tech>.repository.ts implementation  — implements a persistence-shaped port
+ *   <module>.<tech>.service.ts   implementation   — implements an external-service port
+ *   ports/*.port.ts              ports + public API — types only, one file per role
+ *   *.entity.ts, *.errors.ts     domain           — pure TypeScript
  *
- * Every port implementation is named `<module>.<technology>.repository.ts`:
- * one role suffix for the whole family, with the technology in the middle so
- * it is visible at the composition root where it is chosen. Each technology
- * gets its own rule below, because each is allowed a different SDK.
+ * Port implementations come in two families, and the suffix says which kind of
+ * dependency is being inverted. A `.repository.ts` adapts something the module
+ * STORES INTO and READS BACK — Prisma, Redis, the filesystem. A `.service.ts`
+ * adapts an external CAPABILITY THE MODULE CALLS and gets an answer from —
+ * Anthropic today, a mail or payments provider tomorrow. Both carry the
+ * technology in the middle so it is visible at the composition root where it
+ * is chosen.
  *
- * *.ports.ts carries two jobs, so keep them visibly separate inside the file:
- *   - a PORT inverts an outbound dependency the module owns several
- *     implementations of (Prisma, Redis, in-memory, …). The module
+ * `<module>.service.ts` (one dot) is the application service; a two-dot
+ * `<module>.<tech>.service.ts` is an adapter. The rules below tell them apart
+ * with `[^/.]+` versus `[^/]+\.[^./]+`, so a service must never be named with
+ * a dot in its stem unless it really is an adapter.
+ *
+ * Every abstract type the module owns lives under ports/, one file per role:
+ *   - repository.port.ts, cache.port.ts, source.port.ts, lock.port.ts,
+ *     generator.port.ts, tokens.port.ts — a PORT inverts an outbound
+ *     dependency the module owns several implementations of. The module
  *     declares what it needs.
- *   - the PUBLIC API publishes a capability the module offers to siblings. The
- *     module declares what it gives, in plain data over ids — never entities.
+ *   - dto.port.ts, service.port.ts — the transfer models the service takes and
+ *     returns, and the service interface itself.
+ *   - public-api.port.ts — the capability the module offers to siblings, in
+ *     plain data over ids. This is the ONLY file another module may import,
+ *     and `modules-are-islands` below enforces exactly that: with the public
+ *     API in a file of its own, "a sibling imports the public API and nothing
+ *     else" is a tool-checked rule rather than a convention. Keeping entities
+ *     out of that file is still by hand.
  *
- * Because both live in one file, `modules-are-islands` below can only police
- * WHICH FILE crosses a module border, not which type inside it. "A sibling
- * imports the public API and nothing else" is therefore a convention here,
- * not an enforced rule. If that starts to leak, split the public API back
- * into its own *.contract.ts and give it its own rule.
+ * ADDING THINGS TO THIS FILE
+ *
+ * A new MODULE needs no change here at all: every rule matches
+ * `src/modules/[^/]+/` and the file-role suffixes, never a module name.
+ *
+ * A new TECHNOLOGY needs one entry in the ADAPTERS table below — nothing else.
+ * The table generates both rules that used to be written by hand per
+ * technology: the layering rule that keeps the adapter under the service, and
+ * the containment rule that keeps its SDK out of every other file. An adapter
+ * whose technology is missing from the table fails
+ * `adapter-technology-is-registered`, so a new SDK cannot slip in unpoliced by
+ * being named something the file has never heard of.
  */
+
+/** Every ports/*.port.ts file, in any module. */
+const PORT_FILES = "^src/modules/[^/]+/ports/[^/]+\\.port\\.ts$";
+
+/** The one port file another module may import. */
+const PUBLIC_API_FILE = "^src/modules/[^/]+/ports/public-api\\.port\\.ts$";
+
+/** The application service — one dot in the stem, unlike a `<module>.<tech>.service.ts` adapter. */
+const APPLICATION_SERVICE_FILE = "^src/modules/[^/]+/[^/.]+\\.service\\.ts$";
+
+/** The pure lib files anything may import. */
+const PURE_LIB = "^src/lib/(errors|clock|pagination)\\.ts$";
 
 /** What domain files (entities, errors) may depend on: each other and the pure lib files. */
-const DOMAIN_ALLOWED =
-    "^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|^src/lib/(errors|clock|pagination)\\.ts$";
+const DOMAIN_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${PURE_LIB}`;
 
-/** What a service may depend on: the domain, its ports, other modules' published APIs (also *.ports.ts), its DTO mappings, other services in its module, pure lib. */
-const SERVICE_ALLOWED =
-    "^src/modules/[^/]+/[^/]+\\.(entity|errors|service|ports|dto)\\.ts$|^src/lib/(errors|clock|pagination)\\.ts$";
+/** What a service may depend on: the domain, its ports, other modules' published APIs (also a ports/ file), its DTO mappings, other application services, pure lib. */
+const SERVICE_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors|dto)\\.ts$|${APPLICATION_SERVICE_FILE}|${PORT_FILES}|${PURE_LIB}`;
 
 /**
- * What a *.dto.ts file may depend on: the domain it maps from, the *.ports.ts
- * that declares the DTO type, and pure lib. A service returns DTOs, so this
- * file has to stay as framework-free as the service — Zod in particular.
+ * What a *.dto.ts file may depend on: the domain it maps from, the ports/ files
+ * that declare the DTO and input types, and pure lib. A service returns DTOs,
+ * so this file has to stay as framework-free as the service — Zod in particular.
  */
-const DTO_ALLOWED =
-    "^src/modules/[^/]+/[^/]+\\.(entity|errors|ports|dto)\\.ts$|^src/lib/(errors|clock|pagination)\\.ts$";
+const DTO_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors|dto)\\.ts$|${PORT_FILES}|${PURE_LIB}`;
 
 /**
- * What a *.ports.ts file may depend on: the domain, pure lib types, and other
- * modules' *.ports.ts (that is how a consumer names a published API). Never a
- * framework, an SDK, a service or an implementation.
+ * What a ports/*.port.ts file may depend on: the domain, pure lib types, other
+ * port files in its own module, and other modules' public-api.port.ts (that is
+ * how a consumer names a published API). Never a framework, an SDK, a service
+ * or an implementation.
  */
-const PORT_ALLOWED =
-    "^src/modules/[^/]+/[^/]+\\.(entity|errors|ports)\\.ts$|^src/lib/(errors|clock|pagination)\\.ts$";
+const PORT_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${PORT_FILES}|${PURE_LIB}`;
 
-/** What every port implementation may depend on: the domain, the module's ports, pure lib. Its own SDK is added per rule below. */
-const IMPLEMENTATION_ALLOWED =
-    "^src/modules/[^/]+/[^/]+\\.(entity|errors|ports)\\.ts$|^src/lib/(errors|clock|pagination)\\.ts$";
-
-/** The Prisma implementation of a repository port. */
-const PRISMA_IMPLEMENTATION_ALLOWED = `${IMPLEMENTATION_ALLOWED}|^src/generated/`;
-
-/** The Redis implementation of a cache port. */
-const CACHE_IMPLEMENTATION_ALLOWED = `${IMPLEMENTATION_ALLOWED}|^node_modules/ioredis`;
-
-/** The local-filesystem implementation of a source-storage port (node builtins are exempted in the rule itself). */
-const FILE_IMPLEMENTATION_ALLOWED = IMPLEMENTATION_ALLOWED;
+/** What EVERY port implementation may depend on regardless of technology: the domain, the module's ports, pure lib. Its own SDK comes from its ADAPTERS entry. */
+const IMPLEMENTATION_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${PORT_FILES}|${PURE_LIB}`;
 
 /**
- * Every file that implements a port — `<module>.<technology>.repository.ts`,
- * whatever the technology. Matching the family rather than listing it means a
- * new implementation is covered by the composition-root rule the day it is
- * added, before anyone remembers to update this file.
+ * Every file that implements a port — `<module>.<technology>.repository.ts` or
+ * `<module>.<technology>.service.ts`, whatever the technology. Both require a
+ * dot before the technology, which is what keeps `<module>.service.ts` (the
+ * application service) out of this family. Matching the families rather than
+ * listing them means a new implementation is covered by the composition-root
+ * rule the day it is added, before anyone remembers to update this file.
  */
-const IMPLEMENTATION_FILES = "\\.[^./]+\\.repository\\.ts$";
+const IMPLEMENTATION_FILES = "\\.[^./]+\\.(repository|service)\\.ts$";
+
+const IMPLEMENTATION_FILES_IN_MODULES = `^src/modules/[^/]+/[^/]+${IMPLEMENTATION_FILES}`;
+
+/** Files that may name an SDK without adapting it: the type augmentation that declares the decoration, and tests. */
+const SDK_ALWAYS_ALLOWED_IN = ["^src/types/fastify\\.d\\.ts$", "^test/"];
+
+/**
+ * Every technology this codebase adapts, one entry per technology. Each entry
+ * generates a `<technology>-implementation-stays-below` layering rule and, when
+ * the technology has an SDK to contain, a `<technology>-sdk-is-contained` rule.
+ *
+ *   technology     the middle segment of `<module>.<technology>.<family>.ts`
+ *   family         "repository" for a store, "service" for a called capability
+ *   sdk            path prefix of the SDK the adapter owns, or null for none
+ *   sdkAlsoIn      non-adapter files allowed to name that SDK — the plugin that
+ *                  owns the client lifecycle, and anything else specific to it
+ *   alsoDependsOn  extra paths this adapter alone may reach for
+ *   note           what the generated layering rule should say beyond the shared text
+ */
+const ADAPTERS = [
+    {
+        technology: "prisma",
+        family: "repository",
+        sdk: "^src/generated/",
+        sdkAlsoIn: ["^src/plugins/database\\.ts$", "^src/generated/"],
+        alsoDependsOn: [],
+        note: "Test factories seed through Prisma on purpose.",
+    },
+    {
+        technology: "cache",
+        family: "repository",
+        sdk: "^node_modules/ioredis",
+        sdkAlsoIn: ["^src/plugins/redis\\.ts$"],
+        alsoDependsOn: [],
+        note:
+            "It is a sibling of the Prisma repository, never a wrapper around it — a cache that " +
+            "calls the database is a second service in disguise.",
+    },
+    {
+        technology: "file",
+        family: "repository",
+        sdk: null,
+        sdkAlsoIn: [],
+        alsoDependsOn: [],
+        note:
+            "Its own dependency is node builtins, so there is no SDK twin rule to write — the " +
+            "directory it writes to arrives from config at the composition root.",
+    },
+    {
+        technology: "anthropic",
+        family: "service",
+        sdk: "^node_modules/@anthropic-ai",
+        sdkAlsoIn: ["^src/plugins/anthropic\\.ts$"],
+        alsoDependsOn: ["^node_modules/zod", "^src/lib/article-text\\.ts$"],
+        note:
+            "It is a `.service.ts` rather than a `.repository.ts` because it adapts an external " +
+            "capability the module calls, not a store it reads and writes.",
+    },
+];
+
+const adapterFiles = ({ technology, family }) =>
+    `^src/modules/[^/]+/[^/]+\\.${technology}\\.${family}\\.ts$`;
+
+const implementationStaysBelow = (adapter) => ({
+    name: `${adapter.technology}-implementation-stays-below`,
+    severity: "error",
+    comment:
+        `A ${adapter.technology} adapter implements a port from ports/; it may not reach up into ` +
+        "the application service, routes or schemas, and it may not import Fastify or another " +
+        `technology's SDK. ${adapter.note}`,
+    from: { path: adapterFiles(adapter) },
+    to: {
+        pathNot: [
+            IMPLEMENTATION_ALLOWED,
+            ...(adapter.sdk ? [adapter.sdk] : []),
+            ...adapter.alsoDependsOn,
+        ].join("|"),
+        dependencyTypesNot: ["core"],
+    },
+});
+
+const sdkIsContained = (adapter) => ({
+    name: `${adapter.technology}-sdk-is-contained`,
+    severity: "error",
+    comment:
+        `${adapter.sdk} may be imported only by *.${adapter.technology}.${adapter.family}.ts ` +
+        "files, the plugin that owns its client lifecycle, the fastify type augmentation, and " +
+        "tests. Everything else programs against a port.",
+    from: {
+        pathNot: [
+            adapterFiles(adapter),
+            ...adapter.sdkAlsoIn,
+            ...SDK_ALWAYS_ALLOWED_IN,
+        ].join("|"),
+    },
+    to: { path: adapter.sdk },
+});
+
+const adapterRules = [
+    ...ADAPTERS.map(implementationStaysBelow),
+    ...ADAPTERS.filter((adapter) => adapter.sdk !== null).map(sdkIsContained),
+];
 
 module.exports = {
     forbidden: [
@@ -106,8 +228,10 @@ module.exports = {
                 "Services depend on ports and entities, never on Fastify, Zod, Prisma, ioredis, a port " +
                 "implementation, routes or schemas. A service holds the repository port AND the cache " +
                 "port and decides which one each use case reads — but it never learns which technology " +
-                "is behind either. This is what keeps use cases unit-testable with in-memory ports.",
-            from: { path: "^src/modules/[^/]+/[^/]+\\.service\\.ts$" },
+                "is behind either. This is what keeps use cases unit-testable with in-memory ports. " +
+                "This rule matches `<module>.service.ts` only — a two-dot `<module>.<tech>.service.ts` " +
+                "is an adapter and answers to its own SDK rule instead.",
+            from: { path: APPLICATION_SERVICE_FILE },
             to: { pathNot: SERVICE_ALLOWED },
         },
         {
@@ -126,75 +250,28 @@ module.exports = {
             name: "port-is-types-only",
             severity: "error",
             comment:
-                "A *.ports.ts file holds every abstract type the module owns — repository, cache, " +
-                "and the public API siblings import — and speaks the module's domain " +
-                "vocabulary only: no frameworks, no SDKs. The public API section must stay plain " +
-                "data over ids: this rule cannot see inside the file, so keep entities out of it " +
-                "by hand.",
-            from: { path: "^src/modules/[^/]+/[^/]+\\.ports\\.ts$" },
+                "A ports/*.port.ts file holds abstract types and nothing else — one file per role: " +
+                "repository, cache, source, lock, generator, tokens, dto, service, and the " +
+                "public-api.port.ts siblings import. It speaks the module's domain vocabulary only: " +
+                "no frameworks, no SDKs. public-api.port.ts must stay plain data over ids: this rule " +
+                "cannot see inside the file, so keep entities out of it by hand.",
+            from: { path: PORT_FILES },
             to: { pathNot: PORT_ALLOWED },
         },
+        ...adapterRules,
         {
-            name: "prisma-implementation-stays-below",
+            name: "adapter-technology-is-registered",
             severity: "error",
             comment:
-                "A Prisma repository implements a port from *.ports.ts; it may not reach up into " +
-                "services, routes or schemas, and it may not import Fastify.",
-            from: { path: "^src/modules/[^/]+/[^/]+\\.prisma\\.repository\\.ts$" },
-            to: { pathNot: PRISMA_IMPLEMENTATION_ALLOWED },
-        },
-        {
-            name: "cache-implementation-stays-below",
-            severity: "error",
-            comment:
-                "A cache repository implements a cache port from *.ports.ts; it may not reach up into " +
-                "services, routes or schemas, and it may not import Fastify or Prisma. It is a sibling " +
-                "of the Prisma repository, never a wrapper around it — a cache that calls the database " +
-                "is a second service in disguise.",
-            from: { path: "^src/modules/[^/]+/[^/]+\\.cache\\.repository\\.ts$" },
-            to: {
-                pathNot: CACHE_IMPLEMENTATION_ALLOWED,
-                dependencyTypesNot: ["core"],
-            },
-        },
-        {
-            name: "file-implementation-stays-below",
-            severity: "error",
-            comment:
-                "A filesystem repository implements a storage port; it may not reach up into " +
-                "services, routes or schemas, and it may not import Fastify or Prisma. Its own " +
-                "dependency is node builtins, so there is no SDK twin rule to write — the " +
-                "directory it writes to arrives from config at the composition root.",
-            from: { path: "^src/modules/[^/]+/[^/]+\\.file\\.repository\\.ts$" },
-            to: {
-                pathNot: FILE_IMPLEMENTATION_ALLOWED,
-                dependencyTypesNot: ["core"],
-            },
-        },
-        {
-            name: "redis-only-in-cache-implementations",
-            severity: "error",
-            comment:
-                "ioredis may be imported only by *.cache.repository.ts files, the redis plugin " +
-                "(client lifecycle), the fastify type augmentation, and tests. Everything else " +
-                "programs against a port — the cache twin of prisma-only-in-repositories.",
+                "This file is named like a port implementation but its technology is not in the " +
+                "ADAPTERS table in .dependency-cruiser.cjs, so no layering rule and no SDK " +
+                "containment rule covers it. Add the entry — technology, family, the SDK it owns " +
+                "and the plugin that holds that client — and the rules generate themselves.",
             from: {
-                pathNot:
-                    "\\.cache\\.repository\\.ts$|^src/plugins/redis\\.ts$|^src/types/fastify\\.d\\.ts$|^test/",
+                path: IMPLEMENTATION_FILES_IN_MODULES,
+                pathNot: ADAPTERS.map(adapterFiles).join("|"),
             },
-            to: { path: "^node_modules/ioredis" },
-        },
-        {
-            name: "prisma-only-in-repositories",
-            severity: "error",
-            comment:
-                "The generated Prisma client may be imported only by *.prisma.repository.ts files, the database plugin, " +
-                "the fastify type augmentation, and tests (factories seed through Prisma on purpose).",
-            from: {
-                pathNot:
-                    "^src/modules/[^/]+/[^/]+\\.prisma\\.repository\\.ts$|^src/plugins/database\\.ts$|^src/types/fastify\\.d\\.ts$|^src/generated/|^test/",
-            },
-            to: { path: "^src/generated/" },
+            to: { path: ".*" },
         },
         {
             name: "implementations-composed-only-at-the-root",
@@ -211,14 +288,16 @@ module.exports = {
             name: "modules-are-islands",
             severity: "error",
             comment:
-                "A module may import exactly one FILE from another module: its *.ports.ts, and from it " +
-                "only the published public API type. Everything else in that folder — entity, errors, " +
-                "service, implementations — is private. The implementation still arrives as a decoration " +
-                "wired in index.ts (see docs/recipes.md); the type is all that crosses the border.",
+                "A module may import exactly one FILE from another module: its " +
+                "ports/public-api.port.ts. Everything else in that folder — entity, errors, the other " +
+                "port files, service, implementations — is private. With the published API in a file " +
+                "of its own, this is now an enforced rule rather than a convention: taking a " +
+                "repository port or a DTO across a border fails here. The implementation still arrives " +
+                "as a decoration wired in index.ts (see docs/recipes.md); the type is all that crosses.",
             from: { path: "^src/modules/([^/]+)/" },
             to: {
                 path: "^src/modules/",
-                pathNot: "^src/modules/$1/|^src/modules/[^/]+/[^/]+\\.ports\\.ts$",
+                pathNot: `^src/modules/$1/|${PUBLIC_API_FILE}`,
             },
         },
         {
@@ -240,7 +319,7 @@ module.exports = {
     ],
     options: {
         // Generated Prisma code is a black box: edges INTO it are checked
-        // (prisma-only-in-repositories), its internals are not analyzed.
+        // (prisma-sdk-is-contained), its internals are not analyzed.
         doNotFollow: { path: "node_modules|^src/generated" },
         tsConfig: { fileName: "tsconfig.json" },
         // Count type-only imports as dependencies: an `import type` across a

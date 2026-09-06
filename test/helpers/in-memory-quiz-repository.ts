@@ -9,7 +9,7 @@ import type {
     QuizSort,
     QuizSummary,
 } from "@/modules/quiz/quiz.entity.js";
-import type { QuizRepository } from "@/modules/quiz/quiz.ports.js";
+import type { QuizRepository } from "@/modules/quiz/ports/repository.port.js";
 
 const matchesSearch = (quiz: Quiz, search: string | undefined): boolean => {
     if (search === undefined) {
@@ -116,5 +116,7 @@ export const createInMemoryQuizRepository = (
 
             return pageOf(ordered.slice(start), limit, toSummary);
         },
+
+        listTopics: async () => [...new Set(rows.map((quiz) => quiz.topic))].sort(),
     };
 };

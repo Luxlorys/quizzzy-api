@@ -14,16 +14,18 @@ import type {
     AnswerDto,
     AttemptDto,
     AttemptResultDto,
-    CreateQuizInput,
-    ListQuizzesInput,
     QuizDto,
     QuizListItemDto,
     ReviewedQuestionDto,
+} from "./ports/dto.port.js";
+import type {
+    CreateQuizInput,
+    ListQuizzesInput,
     SaveProgressInput,
     StartAttemptInput,
     SubmitAttemptInput,
     UpdateQuizInput,
-} from "./quiz.ports.js";
+} from "./ports/service.port.js";
 import type { Page } from "@/lib/pagination.js";
 
 type QuestionBody = {

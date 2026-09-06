@@ -62,7 +62,8 @@ modules/task/
 ├── index.ts                   # composition root: implementations → service → routes
 ├── task.routes.ts             # HTTP: schemas on routes, thin inline handlers
 ├── task.schema.ts             # the wire contract (Zod: validated in, documented out)
-├── task.ports.ts              # EVERY abstract type: ports, DTO, service, public API
+├── ports/                     # EVERY abstract type, one *.port.ts per role:
+│                              #   repository / cache / dto / service / public-api
 ├── task.dto.ts                # the mappings: wire → input, domain → DTO → wire
 ├── task.service.ts            # use cases (no fastify, no zod, no prisma, no redis)
 ├── task.prisma.repository.ts  # implements TaskRepository — the only file with Prisma

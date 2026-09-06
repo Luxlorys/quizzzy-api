@@ -1,3 +1,4 @@
+import fp from "fastify-plugin";
 import { createRedisQuizCache } from "./quiz.cache.repository.js";
 import {
     createPrismaAttemptRepository,
@@ -6,9 +7,9 @@ import {
 import { createQuizService } from "./quiz.service.js";
 import { attemptRoutes, quizRoutes } from "./quiz.routes.js";
 import { systemClock } from "@/lib/clock.js";
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyInstance } from "fastify";
 
-export const quizModule: FastifyPluginAsync = async (fastify) => {
+const quizModule = async (fastify: FastifyInstance) => {
     const repository = createPrismaQuizRepository(fastify.prisma);
     const attempts = createPrismaAttemptRepository(fastify.prisma);
 
@@ -25,6 +26,10 @@ export const quizModule: FastifyPluginAsync = async (fastify) => {
         clock: systemClock,
     });
 
+    fastify.decorate("quizService", service);
+
     await fastify.register(quizRoutes(service), { prefix: "/api/quizzes" });
     await fastify.register(attemptRoutes(service), { prefix: "/api/attempts" });
 };
+
+export default fp(quizModule, { name: "quiz-module" });

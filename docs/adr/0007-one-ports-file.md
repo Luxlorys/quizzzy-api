@@ -2,6 +2,16 @@
 
 ## Status
 
+**Superseded in part by [ADR-0010](0010-ports-folder-and-service-adapters.md)**,
+which moved every abstract type into a `ports/` folder — one `*.port.ts` per
+role — and split port implementations into `*.<tech>.repository.ts` (stores) and
+`*.<tech>.service.ts` (external capabilities). The first bullet of the Decision
+below no longer holds and the second holds only for persistence-shaped ports;
+the rest — implementations are siblings, the service owns the cache policy, the
+vocabulary follows the filename — still stands. The Consequence this ADR recorded
+as a loss ("the cross-module boundary loses one enforced rule") was what ADR-0010
+was written to recover.
+
 Accepted. Amends [ADR-0001](0001-vertical-modules.md) (file-role names),
 [ADR-0003](0003-ports-and-domain.md) (where port types live) and
 [ADR-0006](0006-module-contracts.md) (which gave the published contract its own

@@ -1,6 +1,6 @@
 import { ArticleNotFoundError } from "./article.errors.js";
 import type { Article } from "./article.entity.js";
-import type { ArticleRepository } from "./article.ports.js";
+import type { ArticleRepository } from "./ports/repository.port.js";
 import type {
     Article as ArticleRow,
     PrismaClient,

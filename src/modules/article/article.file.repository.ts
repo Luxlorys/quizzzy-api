@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ArticleSourceMissingError } from "./article.errors.js";
-import type { ArticleSourceRepository } from "./article.ports.js";
+import type { ArticleSourceRepository } from "./ports/source.port.js";
 
 const SLUG_FALLBACK = "article";
 const MAX_SLUG_LENGTH = 60;

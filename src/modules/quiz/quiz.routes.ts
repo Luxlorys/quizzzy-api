@@ -25,7 +25,7 @@ import {
     toUpdateQuizInput,
 } from "./quiz.dto.js";
 import { errorResponseSchema, noContentSchema } from "@/lib/schemas.js";
-import type { QuizService } from "./quiz.ports.js";
+import type { QuizService } from "./ports/service.port.js";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 
 const QUIZ_TAG = "quizzes";

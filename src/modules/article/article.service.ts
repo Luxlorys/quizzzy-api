@@ -2,7 +2,7 @@ import { acceptSubmission, draftArticle } from "./article.entity.js";
 import { toArticleDto, toArticleSourceDto } from "./article.dto.js";
 import { ArticleNotFoundError } from "./article.errors.js";
 import type { Article } from "./article.entity.js";
-import type { ArticleService, ArticleServiceDeps } from "./article.ports.js";
+import type { ArticleService, ArticleServiceDeps } from "./ports/service.port.js";
 
 export const createArticleService = ({
     repository,

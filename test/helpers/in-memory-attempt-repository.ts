@@ -1,6 +1,6 @@
 import { AttemptNotFoundError } from "@/modules/quiz/quiz.errors.js";
 import type { Attempt, AttemptSummary } from "@/modules/quiz/quiz.entity.js";
-import type { AttemptRepository } from "@/modules/quiz/quiz.ports.js";
+import type { AttemptRepository } from "@/modules/quiz/ports/repository.port.js";
 
 const toSummary = (attempt: Attempt): AttemptSummary => ({
     id: attempt.id,

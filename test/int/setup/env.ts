@@ -24,3 +24,5 @@ process.env.ARTICLE_STORAGE_DIR = path.join(
     tmpdir(),
     `quizzzy-int-articles-${poolId}`,
 );
+
+process.env.ANTHROPIC_API_KEY = "int-test-dummy-key";

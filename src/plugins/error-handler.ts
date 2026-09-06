@@ -18,6 +18,7 @@ const STATUS_BY_CODE: Record<AppErrorCode, number> = {
     UNPROCESSABLE: 422,
     UNAUTHORIZED: 401,
     FORBIDDEN: 403,
+    SERVICE_UNAVAILABLE: 503,
 };
 
 const BAD_REQUEST = 400;

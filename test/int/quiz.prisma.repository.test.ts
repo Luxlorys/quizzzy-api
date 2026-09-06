@@ -229,6 +229,22 @@ describe("Prisma quiz and attempt repositories", () => {
         await expect(attempts.findLatestForQuizzes([])).resolves.toEqual([]);
     });
 
+    it("lists distinct topics sorted, regardless of creation order", async () => {
+        const article = await createArticle({ prisma });
+
+        await quizzes.create({ ...newQuiz(article.id, "One"), topic: "Postgres" });
+        await quizzes.create({ ...newQuiz(article.id, "Two"), topic: "AWS Lambda" });
+        await quizzes.create({
+            ...newQuiz(article.id, "Three"),
+            topic: "AWS Lambda",
+        });
+
+        await expect(quizzes.listTopics()).resolves.toEqual([
+            "AWS Lambda",
+            "Postgres",
+        ]);
+    });
+
     it("takes a quiz's questions and attempts down with it", async () => {
         const seeded = await createQuiz({ prisma });
 

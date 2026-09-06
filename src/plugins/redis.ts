@@ -5,13 +5,17 @@ import type { FastifyInstance } from "fastify";
 /**
  * Owns the Redis client lifecycle — and nothing else. No key names, no TTLs,
  * no cache logic: the plugin provides the raw client; what caching is FOR is a
- * module's port (see modules/quiz/quiz.ports.ts), and how it maps to Redis is
+ * module's port (see modules/quiz/ports/cache.port.ts), and how it maps to Redis is
  * that module's adapter (quiz.cache.repository.ts).
  *
- * `lazyConnect` keeps boot independent of Redis being up — the app starts and
- * serves traffic, and cache reads degrade to the database until the client
- * connects. `maxRetriesPerRequest: 1` is what makes that degradation fast:
- * ioredis defaults to 20, which would turn a Redis outage into 20 retries of
+ * Redis is a hard boot dependency: the generation lock (modules/generation)
+ * has nowhere else to live, so a Redis that never comes up must fail the boot
+ * rather than serve traffic it cannot safely generate against. `lazyConnect`
+ * is what makes an explicit, awaited `connect()` possible here instead of an
+ * implicit connect-on-first-command. Once connected, quiz caching still
+ * degrades to database reads on a later outage — `maxRetriesPerRequest: 1`
+ * and `enableOfflineQueue: false` are what make that degradation fast: ioredis
+ * defaults to 20 retries, which would turn a Redis outage into 20 retries of
  * added latency on every request instead of one quick failure.
  */
 const redis = async (fastify: FastifyInstance) => {
@@ -21,15 +25,16 @@ const redis = async (fastify: FastifyInstance) => {
         enableOfflineQueue: false,
     });
 
-    // A Redis outage must not crash the process: ioredis emits `error` on the
-    // client, and an unhandled 'error' event is a fatal exception in Node.
+    // A Redis outage after boot must not crash the process: ioredis emits
+    // `error` on the client, and an unhandled 'error' event is a fatal
+    // exception in Node. This listener has to be registered before connect()
+    // below, or a boot-time connection failure throws unhandled instead of
+    // rejecting the returned promise.
     client.on("error", (error) => {
         fastify.log.warn({ err: error }, "redis client error");
     });
 
-    client.connect().catch((error: unknown) => {
-        fastify.log.warn({ err: error }, "redis initial connection failed");
-    });
+    await client.connect();
 
     fastify.decorate("redis", client);
 

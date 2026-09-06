@@ -2,7 +2,7 @@ import { systemClock } from "@/lib/clock.js";
 import { ArticleNotFoundError } from "@/modules/article/article.errors.js";
 import type { Clock } from "@/lib/clock.js";
 import type { Article } from "@/modules/article/article.entity.js";
-import type { ArticleRepository } from "@/modules/article/article.ports.js";
+import type { ArticleRepository } from "@/modules/article/ports/repository.port.js";
 
 /**
  * A genuine implementation of the ArticleRepository port, not a mock: it

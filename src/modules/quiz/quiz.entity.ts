@@ -9,6 +9,7 @@ import {
     QuestionOutOfRangeError,
     UnknownOptionError,
     UnknownQuestionError,
+    UnsafeTopicError,
 } from "./quiz.errors.js";
 
 export const QUESTION_KINDS = ["single", "multi"] as const;
@@ -160,6 +161,14 @@ export const correctOptionIds = (question: Question): number[] =>
 const hasUsableAnswerKey = (kind: QuestionKind, correctCount: number): boolean =>
     kind === "single" ? correctCount === 1 : correctCount > 0;
 
+const UNSAFE_TOPIC_PATTERN = /[\n<>]/;
+
+const assertSafeTopic = (topic: string): void => {
+    if (UNSAFE_TOPIC_PATTERN.test(topic)) {
+        throw new UnsafeTopicError();
+    }
+};
+
 const assertAnswerable = (question: DraftQuestion): void => {
     if (question.options.length < MIN_OPTIONS_PER_QUESTION) {
         throw new NotEnoughOptionsError();
@@ -193,6 +202,7 @@ export const draftQuiz = (draft: DraftQuiz): NewQuiz => {
         throw new EmptyQuizError();
     }
 
+    assertSafeTopic(draft.topic);
     draft.questions.forEach(assertAnswerable);
 
     return {
@@ -204,11 +214,17 @@ export const draftQuiz = (draft: DraftQuiz): NewQuiz => {
     };
 };
 
-export const renameQuiz = (quiz: Quiz, changes: QuizChanges): Quiz => ({
-    ...quiz,
-    title: changes.title ?? quiz.title,
-    topic: changes.topic ?? quiz.topic,
-});
+export const renameQuiz = (quiz: Quiz, changes: QuizChanges): Quiz => {
+    if (changes.topic !== undefined) {
+        assertSafeTopic(changes.topic);
+    }
+
+    return {
+        ...quiz,
+        title: changes.title ?? quiz.title,
+        topic: changes.topic ?? quiz.topic,
+    };
+};
 
 export const progressStatusOf = (
     attempt: AttemptSummary | undefined,

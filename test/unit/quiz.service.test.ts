@@ -13,12 +13,10 @@ import {
     AttemptNotSubmittedError,
     QuizNotFoundError,
 } from "@/modules/quiz/quiz.errors.js";
-import type { ArticlePublicApi } from "@/modules/article/article.ports.js";
-import type {
-    CreateQuizInput,
-    QuizCache,
-    QuizRepository,
-} from "@/modules/quiz/quiz.ports.js";
+import type { ArticlePublicApi } from "@/modules/article/ports/public-api.port.js";
+import type { QuizCache } from "@/modules/quiz/ports/cache.port.js";
+import type { QuizRepository } from "@/modules/quiz/ports/repository.port.js";
+import type { CreateQuizInput } from "@/modules/quiz/ports/service.port.js";
 
 const NOW = "2026-03-01T10:00:00.000Z";
 
@@ -26,6 +24,11 @@ const articles: ArticlePublicApi = {
     getArticle: async (articleId) => ({
         id: articleId,
         filename: "lambda-deep-dive.html",
+    }),
+    readArticleSource: async (articleId) => ({
+        id: articleId,
+        filename: "lambda-deep-dive.html",
+        html: "<html></html>",
     }),
 };
 
@@ -259,6 +262,17 @@ describe("quiz list", () => {
 
         expect(secondPage.items.map((item) => item.title)).toEqual(["Gamma"]);
         expect(secondPage.nextCursor).toBeNull();
+    });
+
+    it("lists distinct topics sorted", async () => {
+        await context.service.createQuiz(quizInput({ topic: "Databases" }));
+        await context.service.createQuiz(quizInput({ topic: "AWS" }));
+        await context.service.createQuiz(quizInput({ topic: "AWS" }));
+
+        await expect(context.service.listTopics()).resolves.toEqual([
+            "AWS",
+            "Databases",
+        ]);
     });
 });
 

@@ -68,6 +68,12 @@ export class QuestionOutOfRangeError extends UnprocessableError {
     }
 }
 
+export class UnsafeTopicError extends UnprocessableError {
+    constructor() {
+        super("A topic may not contain a newline or angle brackets.");
+    }
+}
+
 export class AttemptAlreadySubmittedError extends ConflictError {
     constructor() {
         super("This attempt has already been submitted.");

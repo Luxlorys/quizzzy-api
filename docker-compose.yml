@@ -24,7 +24,17 @@ services:
 
     redis:
         image: redis:8-alpine
-        command: ["redis-server", "--save", "", "--appendonly", "no"]
+        command:
+            [
+                "redis-server",
+                "--appendonly",
+                "yes",
+                "--maxmemory",
+                "256mb",
+                "--maxmemory-policy",
+                "noeviction",
+            ]
+        mem_limit: 320m
         ports:
             - "6379:6379"
         healthcheck:
@@ -45,6 +55,7 @@ services:
             REDIS_URL: redis://redis:6379
             ARTICLE_STORAGE_DIR: /app/storage/articles
             PORT: 3000
+            ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
         ports:
             - "3000:3000"
         volumes:

@@ -36,43 +36,60 @@ so work with the rules rather than around them. If a rule seems to block the
 task, stop and ask; do not add exemptions to `.dependency-cruiser.cjs`.
 
 1. **Follow the file roles.** Inside `src/modules/<name>/`: `*.entity.ts` /
-   `*.errors.ts` (pure domain), `*.ports.ts` (**every** abstract type the
-   module owns, in three labelled sections: outbound ports — repository,
-   cache, storage, mail; the `<Name>Dto` plus input types and the
-   `<Name>Service` interface; and `<Name>PublicApi`, the only thing other
-   modules may import), `*.prisma.repository.ts` /
-   `*.cache.repository.ts` / `*.s3.repository.ts` (implementations of those
-   ports — **every** one is named `<module>.<technology>.repository.ts`),
-   `*.service.ts` (use cases), `*.dto.ts` (the mappings across the
+   `*.errors.ts` (pure domain), `ports/*.port.ts` (**every** abstract type the
+   module owns, **one file per role** — `repository.port.ts`, `cache.port.ts`
+   and one file per further outbound dependency named for what it inverts
+   (`source`, `lock`, `generator`, `tokens`, …); `dto.port.ts` for the
+   `<Name>Dto` family; `service.port.ts` for the input types plus the
+   `<Name>Service` interface and its `Deps`; and `public-api.port.ts` holding
+   `<Name>PublicApi`, the only file other modules may import),
+   `*.prisma.repository.ts` / `*.cache.repository.ts` / `*.s3.repository.ts` /
+   `*.anthropic.service.ts` (implementations of those ports),
+   `<module>.service.ts` (use cases), `*.dto.ts` (the mappings across the
    interface ↔ application boundary: `toXInput` wire → service input,
    `toXDto` domain → DTO, `toXResponse` DTO → wire),
    `*.schema.ts` + `*.routes.ts` (interface), `index.ts` (wiring). The
    boundary rules match on these names — a file outside the convention
-   silently escapes its layer's checks. A new technology (mail, search, …)
-   means a port type in `*.ports.ts`, a `<module>.<tech>.repository.ts` file,
-   and its SDK rule in `.dependency-cruiser.cjs`, mirroring the Redis trio.
-   1a. **Cross-module use goes through the provider's published API.** A module
-   offering a capability declares `<Name>PublicApi` in the last section of its
-   `*.ports.ts` (pure types over ids and plain inputs, no entities) and
-   publishes its service as a decoration (see `modules/user/index.ts` —
-   fp-wrapped, mounts its own prefix). The decoration is typed as **the
-   published API, not the service**, in `src/types/fastify.d.ts` — that is what
-   stops unrelated modules reaching into it. A consumer imports that type
-   directly from the provider's `*.ports.ts` and wires `fastify.<x>Service` in
-   its `index.ts` (see `modules/onboarding`). Take **only** the `*PublicApi`
-   type across a border: `modules-are-islands` can check the file, not the type
-   inside it, so this half is on you, as is keeping entities out of the
-   published section. Never re-declare a provider's signature as a port of your
-   own: ports are for infrastructure you implement several ways, the published
-   API is for a capability another module owns. Entities never cross module
-   borders — ids and plain inputs do.
+   silently escapes its layer's checks.
+   1a. **Port implementations come in two families** (ADR-0010). One that adapts
+   something the module **stores into and reads back** is
+   `<module>.<technology>.repository.ts` (Prisma, Redis, filesystem, S3); one
+   that adapts an **external capability the module calls** and gets an answer
+   from is `<module>.<technology>.service.ts` (`generation.anthropic.service.ts`).
+   `<module>.service.ts` — one dot — is the application service and may never
+   import an SDK; a two-dot `<module>.<tech>.service.ts` is an adapter and may.
+   The rules tell them apart by that dot alone, so **never put a dot in an
+   application service's stem**. A new technology (mail, search, …) means a
+   `*.port.ts` file named for the capability, an implementation in whichever
+   family fits, and **one row in the `ADAPTERS` table** in
+   `.dependency-cruiser.cjs` — technology, family, the SDK it owns, the plugin
+   holding that client — which generates both boundary rules. Leaving the row
+   out is not a way to skip the rules: an adapter whose technology is not in the
+   table fails `adapter-technology-is-registered`.
+   1b. **Cross-module use goes through the provider's published API.** A module
+   offering a capability declares `<Name>PublicApi` alone in its
+   `ports/public-api.port.ts` (pure types over ids and plain inputs, no
+   entities) and publishes its service as a decoration (see
+   `modules/article/index.ts` — fp-wrapped, mounts its own prefix). The
+   decoration is typed as **the published API, not the service**, in
+   `src/types/fastify.d.ts` — that is what stops unrelated modules reaching into
+   it. A consumer imports that type directly from the provider's
+   `ports/public-api.port.ts` and wires `fastify.<x>Service` in its `index.ts`.
+   `modules-are-islands` admits **only** that file across a border, so taking a
+   sibling's repository port or DTO fails the build; what is still on you is
+   keeping entities out of the published file. Never re-declare a provider's
+   signature as a port of your own: ports are for infrastructure you implement
+   several ways, the published API is for a capability another module owns.
+   Entities never cross module borders — ids and plain inputs do.
 2. **SDKs only in port implementations.** Prisma lives in
    `*.prisma.repository.ts` (plus `plugins/database.ts` and test factories);
    `ioredis` lives in `*.cache.repository.ts` (plus `plugins/redis.ts`);
-   `@aws-sdk/*` lives in `*.s3.repository.ts` (plus `plugins/s3.ts`). Services
-   never see SDK types; ports speak the module's vocabulary — purpose in the
-   port (`uploadAvatar`, `read`/`write`/`forget`), technology in the
-   implementation (buckets, keys, commands, TTLs).
+   `@aws-sdk/*` lives in `*.s3.repository.ts` (plus `plugins/s3.ts`);
+   `@anthropic-ai/sdk` lives in `*.anthropic.service.ts` (plus
+   `plugins/anthropic.ts`). Application services never see SDK types; ports
+   speak the module's vocabulary — purpose in the port (`uploadAvatar`,
+   `read`/`write`/`forget`, `generate`), technology in the implementation
+   (buckets, keys, commands, TTLs, models, prompts).
    2a. **Implementations are siblings, never nested.** The cache repository
    implements the cache port and talks to Redis only; it never wraps or calls
    the Prisma repository, and no `*.repository.cached.ts` middle file exists.

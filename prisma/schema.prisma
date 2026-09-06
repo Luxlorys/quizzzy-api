@@ -17,13 +17,21 @@ enum AttemptStatus {
   submitted
 }
 
+enum GenerationStatus {
+  pending
+  running
+  succeeded
+  failed
+}
+
 model Article {
   id        Int      @id @default(autoincrement())
   filename  String
   sourceKey String   @map("source_key")
   createdAt DateTime @default(now()) @map("created_at")
 
-  quizzes Quiz[]
+  quizzes     Quiz[]
+  generations QuizGeneration[]
 
   @@map("articles")
 }
@@ -36,13 +44,37 @@ model Quiz {
   sourceName String   @map("source_name")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  article   Article    @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  questions Question[]
-  attempts  Attempt[]
+  article     Article          @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  questions   Question[]
+  attempts    Attempt[]
+  generations QuizGeneration[]
 
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@index([title, id])
   @@map("quizzes")
+}
+
+model QuizGeneration {
+  id              Int              @id @default(autoincrement())
+  articleId       Int              @map("article_id")
+  status          GenerationStatus @default(pending)
+  lockToken       String           @map("lock_token")
+  quizId          Int?             @map("quiz_id")
+  failureCode     String?          @map("failure_code")
+  failureMessage  String?          @map("failure_message")
+  inputTokens     Int?             @map("input_tokens")
+  outputTokens    Int?             @map("output_tokens")
+  cacheReadTokens Int?             @map("cache_read_tokens")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  finishedAt      DateTime?        @map("finished_at")
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  quiz    Quiz?   @relation(fields: [quizId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@map("quiz_generations")
 }
 
 model Question {

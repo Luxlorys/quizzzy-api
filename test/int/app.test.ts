@@ -17,7 +17,11 @@ describe("application plumbing", () => {
         const response = await app.inject({ method: "GET", url: "/health" });
 
         expect(response.statusCode).toBe(200);
-        expect(response.json()).toEqual({ status: "ok", database: "up" });
+        expect(response.json()).toEqual({
+            status: "ok",
+            database: "up",
+            cache: "up",
+        });
     });
 
     it("applies security headers and rate-limit accounting", async () => {

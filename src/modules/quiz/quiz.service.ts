@@ -15,7 +15,7 @@ import {
 } from "./quiz.dto.js";
 import { AttemptNotFoundError, QuizNotFoundError } from "./quiz.errors.js";
 import type { Attempt, Quiz } from "./quiz.entity.js";
-import type { QuizService, QuizServiceDeps } from "./quiz.ports.js";
+import type { QuizService, QuizServiceDeps } from "./ports/service.port.js";
 
 export const createQuizService = ({
     repository,
@@ -99,6 +99,8 @@ export const createQuizService = ({
 
             return toQuizPageDto(page, latest);
         },
+
+        listTopics: () => repository.listTopics(),
 
         updateQuiz: async (input) =>
             toQuizDto(

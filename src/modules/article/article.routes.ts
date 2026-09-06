@@ -10,7 +10,7 @@ import {
     toSubmitArticleInput,
 } from "./article.dto.js";
 import { errorResponseSchema, noContentSchema } from "@/lib/schemas.js";
-import type { ArticleService } from "./article.ports.js";
+import type { ArticleService } from "./ports/service.port.js";
 import type { FastifyPluginAsyncZod } from "fastify-type-provider-zod";
 
 const ARTICLE_TAG = "articles";

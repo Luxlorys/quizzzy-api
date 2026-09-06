@@ -1,6 +1,6 @@
 import { QUESTION_KINDS } from "./quiz.entity.js";
 import type { Option, Question, Quiz } from "./quiz.entity.js";
-import type { QuizCache } from "./quiz.ports.js";
+import type { QuizCache } from "./ports/cache.port.js";
 import type { Redis } from "ioredis";
 
 const KEY_VERSION = "v1";

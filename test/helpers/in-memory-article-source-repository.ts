@@ -1,5 +1,5 @@
 import { ArticleSourceMissingError } from "@/modules/article/article.errors.js";
-import type { ArticleSourceRepository } from "@/modules/article/article.ports.js";
+import type { ArticleSourceRepository } from "@/modules/article/ports/source.port.js";
 
 /**
  * A genuine implementation of the ArticleSourceRepository port, not a mock: it

@@ -13,7 +13,12 @@
  *   }
  */
 export type AppErrorCode =
-    "NOT_FOUND" | "CONFLICT" | "UNPROCESSABLE" | "UNAUTHORIZED" | "FORBIDDEN";
+    | "NOT_FOUND"
+    | "CONFLICT"
+    | "UNPROCESSABLE"
+    | "UNAUTHORIZED"
+    | "FORBIDDEN"
+    | "SERVICE_UNAVAILABLE";
 
 export abstract class AppError extends Error {
     abstract readonly code: AppErrorCode;
@@ -47,4 +52,8 @@ export class UnauthorizedError extends AppError {
 /** The caller is authenticated but not allowed to do this. */
 export class ForbiddenError extends AppError {
     readonly code = "FORBIDDEN";
+}
+
+export class ServiceUnavailableError extends AppError {
+    readonly code = "SERVICE_UNAVAILABLE";
 }

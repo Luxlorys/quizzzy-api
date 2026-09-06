@@ -11,7 +11,7 @@ import type {
     QuizSort,
     QuizSummary,
 } from "./quiz.entity.js";
-import type { AttemptRepository, QuizRepository } from "./quiz.ports.js";
+import type { AttemptRepository, QuizRepository } from "./ports/repository.port.js";
 import { pageOf } from "@/lib/pagination.js";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client.js";
 
@@ -207,6 +207,16 @@ export const createPrismaQuizRepository = (
         });
 
         return pageOf(rows, limit, toQuizSummary);
+    },
+
+    listTopics: async () => {
+        const rows = await prisma.quiz.findMany({
+            distinct: ["topic"],
+            select: { topic: true },
+            orderBy: { topic: "asc" },
+        });
+
+        return rows.map((row) => row.topic);
     },
 });
 

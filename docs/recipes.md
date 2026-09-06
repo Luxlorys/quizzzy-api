@@ -62,9 +62,9 @@ fastify.post("/", {
 
 The 401 flows through the same error-handler as everything else. Sign tokens in
 an `auth` module's service. To keep that service unit-testable, `fastify.jwt` is
-an outbound dependency like any other: declare `TokenSigner` in the ports
-section of `auth.ports.ts`, implement it in `auth.jwt.repository.ts`, and wire
-it in `auth/index.ts` — the same three pieces as S3 and Redis below.
+an outbound dependency like any other: declare `TokenSigner` in
+`auth/ports/token-signer.port.ts`, implement it in `auth.jwt.repository.ts`, and
+wire it in `auth/index.ts` — the same three pieces as S3 and Redis below.
 
 ---
 
@@ -76,16 +76,32 @@ SDK, the plugin owns the client lifecycle.**
 
 - **Plugin**: `src/plugins/s3.ts` — client from config, `decorate("s3")`,
   destroy on close. Typed in `src/types/fastify.d.ts`.
-- **Port**: `modules/user/user.ports.ts` — `AvatarRepository.uploadAvatar(...)`;
-  purpose-named, zero SDK vocabulary.
+- **Port**: `modules/user/ports/avatar.port.ts` — `AvatarRepository.uploadAvatar(...)`;
+  purpose-named, zero SDK vocabulary. One `*.port.ts` file per role.
 - **Implementation**: `modules/user/user.s3.repository.ts` — bucket, key
   layout, `PutObjectCommand`; the only module file importing `@aws-sdk/*`.
-  Every port implementation is named `<module>.<technology>.repository.ts`.
+  A port implementation is named `<module>.<technology>.repository.ts` when it
+  adapts a **store** (S3, Prisma, Redis, the filesystem) and
+  `<module>.<technology>.service.ts` when it adapts an **external capability the
+  module calls** and gets an answer from — `generation.anthropic.service.ts` is
+  the live example. See [ADR-0010](adr/0010-ports-folder-and-service-adapters.md).
 - **Wiring**: `modules/user/index.ts` —
   `createS3AvatarRepository(fastify.s3, config.S3_AVATARS_BUCKET)`.
-- **Boundaries**: `s3-implementation-stays-below` +
-  `aws-sdk-only-in-s3-implementations` in `.dependency-cruiser.cjs` — the
-  storage twins of the Prisma rules.
+- **Boundaries**: one row in the `ADAPTERS` table in
+  `.dependency-cruiser.cjs`, which generates `s3-implementation-stays-below`
+  and `s3-sdk-is-contained` — the storage twins of the Prisma rules:
+
+    ```js
+    {
+        technology: "s3",
+        family: "repository",
+        sdk: "^node_modules/@aws-sdk",
+        sdkAlsoIn: ["^src/plugins/s3\\.ts$"],
+        alsoDependsOn: [],
+        note: "...",
+    }
+    ```
+
 - **Tests**: `test/helpers/in-memory-avatar-repository.ts` (unit lane),
   `test/int/user.s3.repository.test.ts` + `test/int/setup/minio.ts`
   (implementation contract against MinIO — a real S3 API, no AWS account
@@ -93,7 +109,7 @@ SDK, the plugin owns the client lifecycle.**
 
 To add another technology (a mail sender, a payment client), copy that
 six-piece shape with a new file (`user.ses.repository.ts`) and its
-dependency-cruiser pair. The port type, the factory and the dependency key
+`ADAPTERS` row. The port type, the factory and the dependency key
 follow the filename: `MailRepository`, `createSesMailRepository`, `mail` — a
 file renamed without its vocabulary is a half-done rename. Presigned URLs, when needed, are one more port method
 (`signedReadUrl`) implemented in `user.s3.repository.ts` with
@@ -118,7 +134,7 @@ repository, never a wrapper around it**:
 | Piece              | File                                    | Owns                                                                                                                                                                                                                    |
 | ------------------ | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Plugin**         | `src/plugins/redis.ts`                  | The client lifecycle only. `lazyConnect` so boot does not depend on Redis; `maxRetriesPerRequest: 1` so an outage costs one failure, not twenty retries; an `error` listener because an unhandled one is fatal in Node. |
-| **Port**           | `modules/task/task.ports.ts`            | `TaskCache.read/write/forget` — the module's words. No `get`, `set` or `expire`.                                                                                                                                        |
+| **Port**           | `modules/task/ports/cache.port.ts`      | `TaskCache.read/write/forget` — the module's words. No `get`, `set` or `expire`.                                                                                                                                        |
 | **Implementation** | `modules/task/task.cache.repository.ts` | Key layout (`task:v1:<id>`), the TTL, the JSON codec with Date revival, and the failure policy. The only file importing `ioredis`.                                                                                      |
 | **Policy**         | `modules/task/task.service.ts`          | Which use case may read a snapshot and which must not, and where invalidation happens. Holds both ports; imports no SDK.                                                                                                |
 
@@ -193,12 +209,12 @@ connection is blocked, so it needs `redis.duplicate()`, not the shared client.
 
 This one lives in the code, not just in this file — read the slice:
 
-- **Published API**: `UserPublicApi`, in the last section of
-  `src/modules/user/user.ports.ts` — the capability the module offers, as pure
-  types over ids and plain inputs. That file is the only one in the folder
-  another module may import, and this type is the only thing it should take
-  from it. `TaskPublicApi` in `src/modules/task/task.ports.ts` is the second
-  example.
+- **Published API**: `UserPublicApi`, alone in
+  `src/modules/user/ports/public-api.port.ts` — the capability the module offers,
+  as pure types over ids and plain inputs. That file is the only one in the folder
+  another module may import, and because it holds nothing else, that is now a rule
+  the tool enforces rather than one you have to remember. `TaskPublicApi` in
+  `src/modules/task/ports/public-api.port.ts` is the second example.
 - **Publisher**: `src/modules/user/index.ts` — builds its service, calls
   `fastify.decorate("userService", service)`, and is exported wrapped in
   `fastify-plugin` so the decoration escapes encapsulation and reaches
@@ -207,7 +223,7 @@ This one lives in the code, not just in this file — read the slice:
   types that decoration as **the published API, not the service** — which is
   what keeps `fastify.userService` from becoming a way into the whole module.
 - **Consumer**: `src/modules/onboarding/` — names both published types in its
-  own `onboarding.ports.ts` and wires `fastify.userService` /
+  own `ports/service.port.ts` and wires `fastify.userService` /
   `fastify.taskService` into its service in `index.ts`. The import is a real
   edge, so `npm run boundaries` checks it; the rest of those folders stays
   unreachable.
@@ -215,15 +231,17 @@ This one lives in the code, not just in this file — read the slice:
 - **Tests**: `test/unit/onboarding.service.test.ts` fakes each published API in
   five lines; `test/int/onboarding.test.ts` proves the wiring over HTTP.
 
-Do **not** re-declare the provider's signature as a port of your own. The ports
-section of a `*.ports.ts` inverts outbound infrastructure _you_ implement
-several ways; the public API section publishes a capability _this_ module owns.
+Do **not** re-declare the provider's signature as a port of your own. An
+outbound `*.port.ts` inverts infrastructure _you_ implement several ways;
+`public-api.port.ts` publishes a capability _this_ module owns.
 See [ADR-0006](adr/0006-module-contracts.md).
 
-Note the limit of the enforcement: `modules-are-islands` checks that only
-`*.ports.ts` crosses a module border, but since ports and published API share
-one file, nothing stops a sibling importing `UserRepository` too. That one is
-on review, not on the tool.
+The enforcement is complete here: `modules-are-islands` admits only
+`ports/public-api.port.ts` across a module border, so a sibling reaching for
+`UserRepository` fails `npm run boundaries`
+([ADR-0010](adr/0010-ports-folder-and-service-adapters.md)). What is still on
+review is keeping entities _out_ of that file — the rule sees the path, not the
+shape of the types.
 
 If two modules keep growing shared surface, that is the signal they are one
 module — merge them, or extract the shared core to `lib/`.
@@ -236,8 +254,8 @@ Each port method is atomic today. When one use case must commit several writes
 together, give the _port_ a transactional method rather than leaking an ORM
 transaction into the service:
 
-In the ports section of `task.ports.ts`, the port grows a use-case-shaped
-atomic operation:
+In `task/ports/repository.port.ts`, the port grows a use-case-shaped atomic
+operation:
 
 ```ts
 export type TaskRepository = {
