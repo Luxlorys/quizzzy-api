@@ -1,24 +1,29 @@
 import { describe, expect, it } from "vitest";
+import { fixedClock } from "../helpers/fixed-clock.js";
 import {
     createBrokenGenerationLock,
     createInMemoryGenerationLock,
 } from "../helpers/in-memory-generation-lock.js";
 import { createInMemoryGenerationRepository } from "../helpers/in-memory-generation-repository.js";
-import { fixedClock } from "../helpers/fixed-clock.js";
+import {
+    cannedAttempt,
+    cannedCandidate,
+    createSequencedQuizGenerator,
+    createStubQuizGenerator,
+} from "../helpers/stub-quiz-generator.js";
+import { countWords } from "@/lib/article-text.js";
 import { ArticleSourceMissingError } from "@/modules/article/article.errors.js";
+import { planQuestionRange } from "@/modules/generation/generation.entity.js";
 import { createGenerationService } from "@/modules/generation/generation.service.js";
 import {
     GenerationInProgressError,
     GenerationLockUnavailableError,
     GenerationRefusedError,
+    GenerationRequestRejectedError,
 } from "@/modules/generation/generation.errors.js";
+import type { StubQuizGenerator } from "../helpers/stub-quiz-generator.js";
 import type { ArticlePublicApi } from "@/modules/article/ports/public-api.port.js";
-import type { QuizCandidate } from "@/modules/generation/generation.entity.js";
-import type {
-    GenerateQuizInput,
-    GenerationUsage,
-    QuizGenerator,
-} from "@/modules/generation/ports/generator.port.js";
+import type { QuestionBounds } from "@/modules/generation/generation.entity.js";
 import type { GenerationLock } from "@/modules/generation/ports/lock.port.js";
 import type { GenerationRepository } from "@/modules/generation/ports/repository.port.js";
 import type { GenerationService } from "@/modules/generation/ports/service.port.js";
@@ -29,7 +34,16 @@ import type {
 } from "@/modules/quiz/ports/public-api.port.js";
 
 const NOW = "2026-03-01T10:00:00.000Z";
-const ARTICLE_HTML = "<p>Some article text.</p>";
+
+const ARTICLE_HTML = `<html><body>
+<h1>Lambda cold starts</h1>
+<p>A cold start happens when AWS Lambda has to initialize a fresh execution environment before it can run your handler. The platform downloads the deployment package, starts the runtime, and runs any initialization code that sits outside the handler.</p>
+<p>Warm environments skip all of that, which is why a steady stream of invocations feels faster than a burst of traffic after a long idle period.</p>
+</body></html>`;
+
+const SHORT_ARTICLE_HTML = "<p>Too short to quiz.</p>";
+
+const ANY_COUNT: QuestionBounds = { min: 1, max: 30 };
 
 const articles = (overrides: Partial<ArticlePublicApi> = {}): ArticlePublicApi => ({
     getArticle: async (articleId) => ({ id: articleId, filename: "lambda.html" }),
@@ -41,57 +55,17 @@ const articles = (overrides: Partial<ArticlePublicApi> = {}): ArticlePublicApi =
     ...overrides,
 });
 
-const cannedCandidate = (overrides: Partial<QuizCandidate> = {}): QuizCandidate => ({
-    title: "AWS Lambda Cold Starts",
-    topic: "AWS",
-    topicSource: "new",
-    questions: [
-        {
-            kind: "single",
-            prompt: "What causes a cold start?",
-            explanation: "A fresh execution environment.",
-            options: [
-                { text: "A new environment", isCorrect: true },
-                { text: "Low memory", isCorrect: false },
-            ],
-        },
-    ],
-    ...overrides,
-});
+const shortArticles = (): ArticlePublicApi =>
+    articles({
+        readArticleSource: async (articleId) => ({
+            id: articleId,
+            filename: "lambda.html",
+            html: SHORT_ARTICLE_HTML,
+        }),
+    });
 
-const USAGE: GenerationUsage = {
-    inputTokens: 100,
-    outputTokens: 50,
-    cacheReadTokens: 0,
-};
-
-type GeneratorStub = QuizGenerator & { calls: () => GenerateQuizInput[] };
-
-const stubGenerator = (
-    behavior: (
-        input: GenerateQuizInput,
-    ) => Promise<{ candidate: QuizCandidate; usage: GenerationUsage }>,
-): GeneratorStub => {
-    const calls: GenerateQuizInput[] = [];
-
-    return {
-        calls: () => [...calls],
-        generate: async (input) => {
-            calls.push(input);
-
-            return behavior(input);
-        },
-    };
-};
-
-const cannedGenerator = (overrides: Partial<QuizCandidate> = {}): GeneratorStub =>
-    stubGenerator(async () => ({
-        candidate: cannedCandidate(overrides),
-        usage: USAGE,
-    }));
-
-const throwingGenerator = (error: Error): GeneratorStub =>
-    stubGenerator(async () => {
+const throwingGenerator = (error: Error): StubQuizGenerator =>
+    createStubQuizGenerator(async () => {
         throw error;
     });
 
@@ -137,15 +111,17 @@ const testTokenGenerator = { generate: () => `test-token-${nextToken++}` };
 const buildService = (
     overrides: {
         lock?: GenerationLock;
-        generator?: GeneratorStub;
+        generator?: StubQuizGenerator;
         articles?: ArticlePublicApi;
         quizzes?: ReturnType<typeof quizzes>;
         lockRenewSeconds?: number;
+        questionBounds?: QuestionBounds;
+        maxCorrections?: number;
     } = {},
 ) => {
     const repository = createInMemoryGenerationRepository();
     const lock = overrides.lock ?? createInMemoryGenerationLock();
-    const generator = overrides.generator ?? cannedGenerator();
+    const generator = overrides.generator ?? createStubQuizGenerator();
     const articleApi = overrides.articles ?? articles();
     const quizApi = overrides.quizzes ?? quizzes();
     const clock = fixedClock(NOW);
@@ -160,7 +136,11 @@ const buildService = (
             clock,
             tokens: testTokenGenerator,
         },
-        { lockRenewSeconds: overrides.lockRenewSeconds ?? 30 },
+        {
+            lockRenewSeconds: overrides.lockRenewSeconds ?? 30,
+            questionBounds: overrides.questionBounds ?? ANY_COUNT,
+            maxCorrections: overrides.maxCorrections ?? 1,
+        },
     );
 
     return {
@@ -246,13 +226,13 @@ describe("generation service — starting", () => {
             {
                 repository,
                 lock,
-                generator: cannedGenerator(),
+                generator: createStubQuizGenerator(),
                 articles: articles(),
                 quizzes: quizzes(),
                 clock: fixedClock(NOW),
                 tokens: testTokenGenerator,
             },
-            { lockRenewSeconds: 30 },
+            { lockRenewSeconds: 30, questionBounds: ANY_COUNT, maxCorrections: 1 },
         );
 
         await expect(service.startGeneration({ articleId: 1 })).rejects.toThrow(
@@ -262,11 +242,141 @@ describe("generation service — starting", () => {
     });
 });
 
+describe("generation service — preparing the article", () => {
+    it("hands the generator the extracted text and the planned range, never the HTML", async () => {
+        const generator = createStubQuizGenerator();
+        const { service } = buildService({ generator });
+
+        const started = await service.startGeneration({ articleId: 1 });
+
+        await waitUntilTerminal(service, started.id);
+
+        const [call] = generator.calls();
+
+        if (call === undefined) {
+            throw new Error("expected the generator to be called once");
+        }
+
+        expect(call.filename).toBe("lambda.html");
+        expect(call.articleText).toContain("A cold start happens when AWS Lambda");
+        expect(call.articleText).not.toContain("<p>");
+        expect(call.questionRange).toEqual(
+            planQuestionRange(countWords(call.articleText), ANY_COUNT),
+        );
+    });
+
+    it("records EMPTY_ARTICLE_TEXT without calling the generator when there is too little text", async () => {
+        const generator = createStubQuizGenerator();
+        const { service } = buildService({ generator, articles: shortArticles() });
+
+        const started = await service.startGeneration({ articleId: 1 });
+        const settled = await waitUntilTerminal(service, started.id);
+
+        expect(settled.status).toBe("failed");
+        expect(settled.failureCode).toBe("EMPTY_ARTICLE_TEXT");
+        expect(generator.calls()).toHaveLength(0);
+    });
+});
+
+describe("generation service — validating and correcting the candidate", () => {
+    const unusable = cannedCandidate({
+        title: "   ",
+        questions: [
+            {
+                kind: "single",
+                prompt: "Pick one",
+                explanation: "x",
+                options: [
+                    { text: "A", isCorrect: true },
+                    { text: "B", isCorrect: true },
+                ],
+            },
+        ],
+    });
+
+    it("sends every reason back once and accepts the corrected candidate, billing both turns", async () => {
+        const generator = createSequencedQuizGenerator(unusable, cannedCandidate());
+        const { service, repository } = buildService({ generator });
+
+        const started = await service.startGeneration({ articleId: 1 });
+        const settled = await waitUntilTerminal(service, started.id);
+
+        expect(settled.status).toBe("succeeded");
+        expect(generator.corrections()).toEqual([
+            [
+                "the title must not be empty",
+                "question 1 is single-select and needs exactly one correct option, not 2",
+            ],
+        ]);
+        expect(repository.rows()[0]).toMatchObject({
+            inputTokens: 200,
+            outputTokens: 100,
+            cacheReadTokens: 0,
+        });
+    });
+
+    it("fails with GENERATION_INVALID_OUTPUT naming the reasons once the correction budget is spent", async () => {
+        const generator = createSequencedQuizGenerator(unusable, unusable);
+        const { service, quizzes: quizApi } = buildService({ generator });
+
+        const started = await service.startGeneration({ articleId: 1 });
+        const settled = await waitUntilTerminal(service, started.id);
+
+        expect(settled.status).toBe("failed");
+        expect(settled.failureCode).toBe("GENERATION_INVALID_OUTPUT");
+        expect(settled.failureMessage).toContain("the title must not be empty");
+        expect(generator.corrections()).toHaveLength(1);
+        expect(quizApi.createdQuizzes()).toHaveLength(0);
+    });
+
+    it("spends no correction turn when the budget is zero", async () => {
+        const generator = createSequencedQuizGenerator(unusable, cannedCandidate());
+        const { service } = buildService({ generator, maxCorrections: 0 });
+
+        const started = await service.startGeneration({ articleId: 1 });
+        const settled = await waitUntilTerminal(service, started.id);
+
+        expect(settled.status).toBe("failed");
+        expect(settled.failureCode).toBe("GENERATION_INVALID_OUTPUT");
+        expect(generator.corrections()).toEqual([]);
+    });
+
+    it("holds the candidate to the question range planned for this article", async () => {
+        const twoQuestions = cannedCandidate({
+            questions: [
+                ...cannedCandidate().questions,
+                {
+                    kind: "single",
+                    prompt: "What keeps an environment warm?",
+                    explanation: "Steady traffic.",
+                    options: [
+                        { text: "Steady traffic", isCorrect: true },
+                        { text: "A larger package", isCorrect: false },
+                    ],
+                },
+            ],
+        });
+        const generator = createSequencedQuizGenerator(twoQuestions, twoQuestions);
+        const { service } = buildService({
+            generator,
+            questionBounds: { min: 1, max: 1 },
+        });
+
+        const started = await service.startGeneration({ articleId: 1 });
+        const settled = await waitUntilTerminal(service, started.id);
+
+        expect(settled.status).toBe("failed");
+        expect(settled.failureMessage).toContain("exactly 1 question, not 2");
+    });
+});
+
 describe("generation service — topic reconciliation (D7)", () => {
     it("snaps a model-picked topic to the stored casing of an existing one", async () => {
         const { service, quizzes: quizApi } = buildService({
             quizzes: quizzes({ listTopics: async () => ["AWS Lambda"] }),
-            generator: cannedGenerator({ topic: "aws lambda" }),
+            generator: createStubQuizGenerator(async () =>
+                cannedAttempt(cannedCandidate({ topic: "aws lambda" })),
+            ),
         });
 
         const started = await service.startGeneration({ articleId: 1 });
@@ -281,7 +391,9 @@ describe("generation service — topic reconciliation (D7)", () => {
     it("mints a new normalised topic when nothing in the vocabulary matches", async () => {
         const { service, quizzes: quizApi } = buildService({
             quizzes: quizzes({ listTopics: async () => ["Postgres"] }),
-            generator: cannedGenerator({ topic: "  Terraform   Modules  " }),
+            generator: createStubQuizGenerator(async () =>
+                cannedAttempt(cannedCandidate({ topic: "  Terraform   Modules  " })),
+            ),
         });
 
         const started = await service.startGeneration({ articleId: 1 });
@@ -305,6 +417,21 @@ describe("generation service — failure recording", () => {
 
         expect(settled.status).toBe("failed");
         expect(settled.failureCode).toBe("GENERATION_REFUSED");
+    });
+
+    it("records GENERATION_REQUEST_REJECTED with the vendor's detail", async () => {
+        const { service } = buildService({
+            generator: throwingGenerator(
+                new GenerationRequestRejectedError("400 effort must be one of ..."),
+            ),
+        });
+
+        const started = await service.startGeneration({ articleId: 1 });
+        const settled = await waitUntilTerminal(service, started.id);
+
+        expect(settled.status).toBe("failed");
+        expect(settled.failureCode).toBe("GENERATION_REQUEST_REJECTED");
+        expect(settled.failureMessage).toContain("400 effort must be one of");
     });
 
     it("falls back to GENERATION_INVALID_OUTPUT for an unrecognised error", async () => {
@@ -340,10 +467,10 @@ describe("generation service — failure recording", () => {
 describe("generation service — abort on lost lock", () => {
     it("aborts and records LOCK_LOST rather than writing a quiz it no longer holds the lock for", async () => {
         const lock = createInMemoryGenerationLock();
-        const slowGenerator = stubGenerator(async () => {
+        const slowGenerator = createStubQuizGenerator(async () => {
             await sleep(20);
 
-            return { candidate: cannedCandidate(), usage: USAGE };
+            return cannedAttempt();
         });
 
         const { service, quizzes: quizApi } = buildService({
@@ -379,13 +506,13 @@ describe("generation service — boot sweep", () => {
             {
                 repository,
                 lock,
-                generator: cannedGenerator(),
+                generator: createStubQuizGenerator(),
                 articles: articles(),
                 quizzes: quizzes(),
                 clock: fixedClock(NOW),
                 tokens: testTokenGenerator,
             },
-            { lockRenewSeconds: 30 },
+            { lockRenewSeconds: 30, questionBounds: ANY_COUNT, maxCorrections: 1 },
         );
 
     it("leaves a row untouched when its token still matches the live lock holder", async () => {

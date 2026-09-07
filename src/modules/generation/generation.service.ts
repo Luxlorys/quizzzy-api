@@ -1,5 +1,10 @@
 import { toGenerationDto } from "./dto/generation.dto.js";
-import { reconcileTopic } from "./generation.entity.js";
+import {
+    MIN_ARTICLE_TEXT_LENGTH,
+    planQuestionRange,
+    reconcileTopic,
+    validateCandidate,
+} from "./generation.entity.js";
 import {
     ArticleTooLargeError,
     EmptyArticleTextError,
@@ -9,10 +14,17 @@ import {
     GenerationNotFoundError,
     GenerationOutputTruncatedError,
     GenerationRefusedError,
+    GenerationRequestRejectedError,
     GenerationUnavailableError,
     LockLostError,
 } from "./generation.errors.js";
-import type { Generation } from "./generation.entity.js";
+import { countWords, extractArticleText } from "@/lib/article-text.js";
+import type {
+    Generation,
+    QuestionRange,
+    QuizCandidate,
+} from "./generation.entity.js";
+import type { GenerateQuizInput, GenerationUsage } from "./ports/generator.port.js";
 import type {
     GenerationService,
     GenerationServiceDeps,
@@ -25,6 +37,16 @@ const ARTICLE_SOURCE_MISSING_ERROR_NAME = "ArticleSourceMissingError";
 type Failure = {
     code: string;
     message: string;
+};
+
+type PreparedArticle = {
+    articleText: string;
+    questionRange: QuestionRange;
+};
+
+type ValidCandidate = {
+    candidate: QuizCandidate;
+    usage: GenerationUsage;
 };
 
 const isNamed = (error: unknown, name: string): error is Error =>
@@ -55,6 +77,10 @@ const toFailure = (error: unknown): Failure => {
         return { code: "GENERATION_UNAVAILABLE", message: error.message };
     }
 
+    if (error instanceof GenerationRequestRejectedError) {
+        return { code: "GENERATION_REQUEST_REJECTED", message: error.message };
+    }
+
     if (error instanceof LockLostError) {
         return { code: "LOCK_LOST", message: error.message };
     }
@@ -68,6 +94,15 @@ const toFailure = (error: unknown): Failure => {
     return { code: "GENERATION_INVALID_OUTPUT", message: fallback.message };
 };
 
+const addUsage = (
+    total: GenerationUsage,
+    next: GenerationUsage,
+): GenerationUsage => ({
+    inputTokens: total.inputTokens + next.inputTokens,
+    outputTokens: total.outputTokens + next.outputTokens,
+    cacheReadTokens: total.cacheReadTokens + next.cacheReadTokens,
+});
+
 export const createGenerationService = (
     {
         repository,
@@ -78,7 +113,7 @@ export const createGenerationService = (
         clock,
         tokens,
     }: GenerationServiceDeps,
-    { lockRenewSeconds }: GenerationServiceOptions,
+    { lockRenewSeconds, questionBounds, maxCorrections }: GenerationServiceOptions,
 ): GenerationService => {
     const loadGeneration = async (id: number): Promise<Generation> => {
         const generation = await repository.findById(id);
@@ -88,6 +123,46 @@ export const createGenerationService = (
         }
 
         return generation;
+    };
+
+    const prepareArticle = (html: string): PreparedArticle => {
+        const articleText = extractArticleText(html);
+
+        if (articleText.length < MIN_ARTICLE_TEXT_LENGTH) {
+            throw new EmptyArticleTextError();
+        }
+
+        return {
+            articleText,
+            questionRange: planQuestionRange(
+                countWords(articleText),
+                questionBounds,
+            ),
+        };
+    };
+
+    const generateValidCandidate = async (
+        input: GenerateQuizInput,
+    ): Promise<ValidCandidate> => {
+        let attempt = await generator.generate(input);
+        let usage = attempt.usage;
+        let reasons = validateCandidate(attempt.candidate, input.questionRange);
+
+        for (
+            let correction = 0;
+            reasons.length > 0 && correction < maxCorrections;
+            correction++
+        ) {
+            attempt = await attempt.correct(reasons);
+            usage = addUsage(usage, attempt.usage);
+            reasons = validateCandidate(attempt.candidate, input.questionRange);
+        }
+
+        if (reasons.length > 0) {
+            throw new GenerationInvalidOutputError(reasons);
+        }
+
+        return { candidate: attempt.candidate, usage };
     };
 
     const runGeneration = async (
@@ -119,10 +194,13 @@ export const createGenerationService = (
                 quizzes.listTopics(),
             ]);
 
-            const { candidate, usage } = await generator.generate({
-                articleHtml: source.html,
+            const { articleText, questionRange } = prepareArticle(source.html);
+
+            const { candidate, usage } = await generateValidCandidate({
+                articleText,
                 filename: source.filename,
                 knownTopics,
+                questionRange,
             });
 
             if (heartbeatState.lockLost) {

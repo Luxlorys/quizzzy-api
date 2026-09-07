@@ -1,11 +1,3 @@
-import {
-    DuplicateCandidateOptionError,
-    DuplicateCandidatePromptError,
-    InvalidCandidateAnswerKeyError,
-    QuestionCountOutOfRangeError,
-    UnsafeTopicError,
-} from "./generation.errors.js";
-
 export const GENERATION_STATUSES = [
     "pending",
     "running",
@@ -19,9 +11,21 @@ export const TOPIC_SOURCES = ["existing", "new"] as const;
 
 export type TopicSource = (typeof TOPIC_SOURCES)[number];
 
-type CandidateQuestionKind = "single" | "multi";
+export const CANDIDATE_QUESTION_KINDS = ["single", "multi"] as const;
 
-const MIN_OPTIONS_PER_QUESTION = 2;
+export type CandidateQuestionKind = (typeof CANDIDATE_QUESTION_KINDS)[number];
+
+export const MIN_ARTICLE_TEXT_LENGTH = 200;
+
+export const CANDIDATE_LIMITS = {
+    titleMaxLength: 200,
+    topicMaxLength: 60,
+    promptMaxLength: 1000,
+    explanationMaxLength: 2000,
+    optionTextMaxLength: 500,
+    minOptionsPerQuestion: 2,
+    maxOptionsPerQuestion: 8,
+} as const;
 
 const WORDS_PER_QUESTION_AT_CEILING = 150;
 const WORDS_PER_QUESTION_AT_FLOOR = 400;
@@ -127,71 +131,136 @@ export const reconcileTopic = (
 
 const UNSAFE_TOPIC_PATTERN = /[\n<>]/;
 
-const assertSafeTopic = (topic: string): void => {
-    if (UNSAFE_TOPIC_PATTERN.test(topic)) {
-        throw new UnsafeTopicError();
+const normaliseText = (text: string): string => text.trim().toLowerCase();
+
+const hasDuplicates = (values: string[]): boolean =>
+    new Set(values.map(normaliseText)).size !== values.length;
+
+const questionsNoun = (count: number): string =>
+    count === 1 ? "question" : "questions";
+
+const textViolations = (
+    label: string,
+    text: string,
+    maxLength: number,
+): string[] => {
+    if (text.trim().length === 0) {
+        return [`${label} must not be empty`];
     }
+
+    if (text.length > maxLength) {
+        return [
+            `${label} must be at most ${maxLength} characters, not ${text.length}`,
+        ];
+    }
+
+    return [];
 };
 
-const hasUsableAnswerKey = (
-    kind: CandidateQuestionKind,
-    correctCount: number,
-): boolean => (kind === "single" ? correctCount === 1 : correctCount > 0);
+const optionCountViolations = (
+    label: string,
+    question: CandidateQuestion,
+): string[] => {
+    const { minOptionsPerQuestion, maxOptionsPerQuestion } = CANDIDATE_LIMITS;
+    const count = question.options.length;
 
-const assertValidAnswerKey = (question: CandidateQuestion): void => {
-    if (question.options.length < MIN_OPTIONS_PER_QUESTION) {
-        throw new InvalidCandidateAnswerKeyError();
-    }
+    return count < minOptionsPerQuestion || count > maxOptionsPerQuestion
+        ? [
+              `${label} needs between ${minOptionsPerQuestion} and ${maxOptionsPerQuestion} options, not ${count}`,
+          ]
+        : [];
+};
 
+const answerKeyViolations = (
+    label: string,
+    question: CandidateQuestion,
+): string[] => {
     const correctCount = question.options.filter(
         (option) => option.isCorrect,
     ).length;
 
-    if (!hasUsableAnswerKey(question.kind, correctCount)) {
-        throw new InvalidCandidateAnswerKeyError();
+    if (question.kind === "single" && correctCount !== 1) {
+        return [
+            `${label} is single-select and needs exactly one correct option, not ${correctCount}`,
+        ];
     }
+
+    if (question.kind === "multi" && correctCount === 0) {
+        return [`${label} is multi-select and needs at least one correct option`];
+    }
+
+    return [];
 };
 
-const assertUniqueOptionTexts = (question: CandidateQuestion): void => {
-    const normalised = question.options.map((option) =>
-        option.text.trim().toLowerCase(),
-    );
+const questionViolations = (
+    question: CandidateQuestion,
+    index: number,
+): string[] => {
+    const label = `question ${index + 1}`;
 
-    if (new Set(normalised).size !== normalised.length) {
-        throw new DuplicateCandidateOptionError();
-    }
+    return [
+        ...textViolations(
+            `${label}'s prompt`,
+            question.prompt,
+            CANDIDATE_LIMITS.promptMaxLength,
+        ),
+        ...textViolations(
+            `${label}'s explanation`,
+            question.explanation,
+            CANDIDATE_LIMITS.explanationMaxLength,
+        ),
+        ...optionCountViolations(label, question),
+        ...question.options.flatMap((option, optionIndex) =>
+            textViolations(
+                `${label}'s option ${optionIndex + 1}`,
+                option.text,
+                CANDIDATE_LIMITS.optionTextMaxLength,
+            ),
+        ),
+        ...(hasDuplicates(question.options.map((option) => option.text))
+            ? [`${label}'s option texts must be distinct`]
+            : []),
+        ...answerKeyViolations(label, question),
+    ];
 };
 
-const assertUniquePrompts = (questions: CandidateQuestion[]): void => {
-    const normalised = questions.map((question) =>
-        question.prompt.trim().toLowerCase(),
-    );
+const topicViolations = (topic: string): string[] => [
+    ...textViolations("the topic", topic, CANDIDATE_LIMITS.topicMaxLength),
+    ...(UNSAFE_TOPIC_PATTERN.test(topic)
+        ? ["the topic may not contain a newline or angle brackets"]
+        : []),
+];
 
-    if (new Set(normalised).size !== normalised.length) {
-        throw new DuplicateCandidatePromptError();
-    }
-};
-
-const assertQuestionCountInRange = (
+const questionCountViolations = (
     questions: CandidateQuestion[],
     range: QuestionRange,
-): void => {
-    if (questions.length < range.min || questions.length > range.max) {
-        throw new QuestionCountOutOfRangeError(
-            questions.length,
-            range.min,
-            range.max,
-        );
+): string[] => {
+    const count = questions.length;
+
+    if (count >= range.min && count <= range.max) {
+        return [];
     }
+
+    return range.min === range.max
+        ? [
+              `the quiz needs exactly ${range.min} ${questionsNoun(range.min)}, not ${count}`,
+          ]
+        : [
+              `the quiz needs between ${range.min} and ${range.max} questions, not ${count}`,
+          ];
 };
 
-export const assertValidCandidate = (
+export const validateCandidate = (
     candidate: QuizCandidate,
     range: QuestionRange,
-): void => {
-    assertSafeTopic(candidate.topic);
-    assertQuestionCountInRange(candidate.questions, range);
-    candidate.questions.forEach(assertValidAnswerKey);
-    candidate.questions.forEach(assertUniqueOptionTexts);
-    assertUniquePrompts(candidate.questions);
-};
+): string[] => [
+    ...textViolations("the title", candidate.title, CANDIDATE_LIMITS.titleMaxLength),
+    ...topicViolations(candidate.topic),
+    ...questionCountViolations(candidate.questions, range),
+    ...candidate.questions.flatMap((question, index) =>
+        questionViolations(question, index),
+    ),
+    ...(hasDuplicates(candidate.questions.map((question) => question.prompt))
+        ? ["question prompts must be distinct across the quiz"]
+        : []),
+];

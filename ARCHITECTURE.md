@@ -104,11 +104,11 @@ of that file, one row per technology.
 | `*.entity.ts`, `*.errors.ts`     | each other, `lib/errors`, `lib/clock`, `lib/pagination`                                     | **anything else** — no npm package, no Fastify, no Zod, no Prisma            |
 | `dto/*.dto.ts` (transfer models) | domain files, its sibling DTO files, pure lib                                               | **`ports/`**, Zod, Fastify, SDKs, implementations, services, routes, schemas |
 | `ports/*.port.ts`                | domain files, its `dto/`, its own port files, other modules' `public-api.port.ts`, pure lib | frameworks, SDKs, implementations, services                                  |
-| `<module>.service.ts`            | domain, its `dto/`, its ports, other modules' published API, pure lib                       | Fastify, Zod, Prisma, ioredis, implementations, routes, schemas              |
+| `<module>.service.ts`            | domain, its `dto/`, its ports, other modules' published API, pure lib, `lib/article-text`   | Fastify, Zod, Prisma, ioredis, implementations, routes, schemas              |
 | `*.prisma.repository.ts`         | domain, its ports, `src/generated/prisma`, pure lib                                         | Fastify, **`dto/`**, services, routes, schemas, other implementations        |
 | `*.cache.repository.ts`          | domain, its ports, `ioredis`, pure lib                                                      | Fastify, Prisma, services, routes, schemas, other implementations            |
 | `*.s3.repository.ts`             | domain, its ports, `@aws-sdk/*`, node builtins, pure lib                                    | Fastify, Prisma, services, routes, schemas, other implementations            |
-| `*.anthropic.service.ts`         | domain, its ports, `@anthropic-ai/sdk`, `zod`, `lib/article-text`, pure lib                 | Fastify, Prisma, services, routes, schemas, other implementations            |
+| `*.anthropic.service.ts`         | domain, its ports, `@anthropic-ai/sdk`, `zod`, pure lib                                     | Fastify, Prisma, services, routes, schemas, other implementations, `lib/`    |
 | `*.routes.ts`, `*.schema.ts`     | everything in the module except an implementation; `lib`                                    | Prisma, other modules                                                        |
 | `index.ts`                       | everything in its module                                                                    | other modules' internals                                                     |
 
@@ -237,6 +237,19 @@ being chosen, and both are bound by
 (`createS3AvatarRepository(fastify.s3, config.S3_AVATARS_BUCKET)`), the service
 consumes only the port, and unit tests substitute an in-memory
 `AvatarRepository` (`test/helpers/in-memory-avatar-repository.ts`).
+
+**An adapter holds no policy** (ADR-0009, ADR-0012). `generation.anthropic.service.ts`
+is one model turn plus a correction turn, with the vendor's errors and stop
+reasons translated into named module errors. Everything a second vendor would
+need identically — extracting the article's text, planning the question range,
+validating the candidate, deciding whether to spend a correction turn — is the
+use case's and lives in `generation.service.ts`, where the unit lane covers it
+with `test/helpers/stub-quiz-generator.ts`. The port returns a
+`GenerationAttempt` whose `correct(reasons)` yields the next attempt; the SDK's
+message content stays inside that closure. An adapter cannot be split into
+helper files — an implementation may not import a sibling or a helper, and a
+helper may not import the SDK — so the only way to shrink one is to move
+non-technology work up.
 
 **Caching is exactly the same three pieces** — the live reference is
 `modules/task`. `src/plugins/redis.ts` owns the client, `ports/cache.port.ts`
@@ -508,6 +521,11 @@ ADR in [docs/adr/](docs/adr/).
   calls a third-party capability is `<module>.<tech>.service.ts`, not a
   `*.gateway.ts` or `*.client.ts` family of its own; the one-dot/two-dot
   distinction against `<module>.service.ts` is the price of reusing the word.
+- **No policy in an adapter** (ADR-0009, ADR-0012). A `*.<tech>.service.ts`
+  is one vendor call plus error translation; input preparation, planning,
+  validation and the retry or correction budget belong to the application
+  service, where in-memory ports can test them. The price is a port that
+  returns an attempt you can ask to correct, rather than a finished answer.
 - **No barrel in `ports/`.** A `ports/index.ts` re-export would restore the
   single import path and destroy the rule the split was made for. `dto/` has no
   barrel either.

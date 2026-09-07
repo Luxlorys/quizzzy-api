@@ -31,10 +31,6 @@ const generationModule = async (
             effort: fastify.config.GENERATION_EFFORT,
             maxOutputTokens: fastify.config.GENERATION_MAX_OUTPUT_TOKENS,
             maxInputTokens: fastify.config.GENERATION_MAX_INPUT_TOKENS,
-            questionBounds: {
-                min: fastify.config.GENERATION_MIN_QUESTIONS,
-                max: fastify.config.GENERATION_MAX_QUESTIONS,
-            },
         });
 
     const service = createGenerationService(
@@ -47,7 +43,14 @@ const generationModule = async (
             clock: systemClock,
             tokens: { generate: () => randomUUID() },
         },
-        { lockRenewSeconds: fastify.config.GENERATION_LOCK_RENEW_SECONDS },
+        {
+            lockRenewSeconds: fastify.config.GENERATION_LOCK_RENEW_SECONDS,
+            questionBounds: {
+                min: fastify.config.GENERATION_MIN_QUESTIONS,
+                max: fastify.config.GENERATION_MAX_QUESTIONS,
+            },
+            maxCorrections: fastify.config.GENERATION_MAX_CORRECTIONS,
+        },
     );
 
     fastify.decorate("generationService", service);

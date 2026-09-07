@@ -1,17 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-    assertValidCandidate,
+    CANDIDATE_LIMITS,
     planQuestionRange,
     reconcileTopic,
+    validateCandidate,
 } from "@/modules/generation/generation.entity.js";
-import {
-    DuplicateCandidateOptionError,
-    DuplicateCandidatePromptError,
-    InvalidCandidateAnswerKeyError,
-    QuestionCountOutOfRangeError,
-    UnsafeTopicError,
-} from "@/modules/generation/generation.errors.js";
-import type { QuizCandidate } from "@/modules/generation/generation.entity.js";
+import type {
+    CandidateQuestion,
+    QuizCandidate,
+} from "@/modules/generation/generation.entity.js";
 
 const ANY_COUNT = { min: 1, max: 30 };
 
@@ -39,6 +36,19 @@ const validCandidate = (overrides: Partial<QuizCandidate> = {}): QuizCandidate =
                 { text: "Clients in the handler", isCorrect: false },
             ],
         },
+    ],
+    ...overrides,
+});
+
+const singleQuestion = (
+    overrides: Partial<CandidateQuestion> = {},
+): CandidateQuestion => ({
+    kind: "single",
+    prompt: "Pick one",
+    explanation: "x",
+    options: [
+        { text: "A", isCorrect: true },
+        { text: "B", isCorrect: false },
     ],
     ...overrides,
 });
@@ -73,119 +83,174 @@ describe("reconcileTopic", () => {
     });
 });
 
-describe("assertValidCandidate", () => {
-    it("accepts a well-formed candidate", () => {
-        expect(() => {
-            assertValidCandidate(validCandidate(), ANY_COUNT);
-        }).not.toThrow();
+describe("validateCandidate", () => {
+    it("returns no reasons for a well-formed candidate", () => {
+        expect(validateCandidate(validCandidate(), ANY_COUNT)).toEqual([]);
     });
 
     it("rejects a single-select question with more than one correct option", () => {
         const candidate = validCandidate({
             questions: [
-                {
-                    kind: "single",
-                    prompt: "Pick one",
-                    explanation: "x",
+                singleQuestion({
                     options: [
                         { text: "A", isCorrect: true },
                         { text: "B", isCorrect: true },
                     ],
-                },
+                }),
             ],
         });
 
-        expect(() => {
-            assertValidCandidate(candidate, ANY_COUNT);
-        }).toThrow(InvalidCandidateAnswerKeyError);
+        expect(validateCandidate(candidate, ANY_COUNT)).toEqual([
+            "question 1 is single-select and needs exactly one correct option, not 2",
+        ]);
     });
 
     it("rejects a multi-select question with no correct option", () => {
         const candidate = validCandidate({
             questions: [
-                {
+                singleQuestion({
                     kind: "multi",
-                    prompt: "Pick some",
-                    explanation: "x",
                     options: [
                         { text: "A", isCorrect: false },
                         { text: "B", isCorrect: false },
                     ],
-                },
+                }),
             ],
         });
 
-        expect(() => {
-            assertValidCandidate(candidate, ANY_COUNT);
-        }).toThrow(InvalidCandidateAnswerKeyError);
+        expect(validateCandidate(candidate, ANY_COUNT)).toEqual([
+            "question 1 is multi-select and needs at least one correct option",
+        ]);
     });
 
     it("rejects duplicate option texts within a question", () => {
         const candidate = validCandidate({
             questions: [
-                {
-                    kind: "single",
-                    prompt: "Pick one",
-                    explanation: "x",
+                singleQuestion({
                     options: [
                         { text: "Same", isCorrect: true },
                         { text: "same", isCorrect: false },
                     ],
-                },
+                }),
             ],
         });
 
-        expect(() => {
-            assertValidCandidate(candidate, ANY_COUNT);
-        }).toThrow(DuplicateCandidateOptionError);
+        expect(validateCandidate(candidate, ANY_COUNT)).toEqual([
+            "question 1's option texts must be distinct",
+        ]);
     });
 
     it("rejects duplicate prompts across the quiz", () => {
-        const question = {
-            kind: "single" as const,
-            prompt: "Same prompt",
-            explanation: "x",
-            options: [
-                { text: "A", isCorrect: true },
-                { text: "B", isCorrect: false },
-            ],
-        };
+        const candidate = validCandidate({
+            questions: [singleQuestion(), singleQuestion({ prompt: "pick one " })],
+        });
 
-        const candidate = validCandidate({ questions: [question, { ...question }] });
-
-        expect(() => {
-            assertValidCandidate(candidate, ANY_COUNT);
-        }).toThrow(DuplicateCandidatePromptError);
+        expect(validateCandidate(candidate, ANY_COUNT)).toEqual([
+            "question prompts must be distinct across the quiz",
+        ]);
     });
 
     it("rejects a question count outside the range planned for the article", () => {
-        expect(() => {
-            assertValidCandidate(validCandidate(), { min: 5, max: 10 });
-        }).toThrow(QuestionCountOutOfRangeError);
+        expect(validateCandidate(validCandidate(), { min: 5, max: 10 })).toEqual([
+            "the quiz needs between 5 and 10 questions, not 2",
+        ]);
 
-        expect(() => {
-            assertValidCandidate(validCandidate(), { min: 1, max: 1 });
-        }).toThrow(QuestionCountOutOfRangeError);
+        expect(validateCandidate(validCandidate(), { min: 1, max: 1 })).toEqual([
+            "the quiz needs exactly 1 question, not 2",
+        ]);
 
-        expect(() => {
-            assertValidCandidate(validCandidate(), { min: 2, max: 2 });
-        }).not.toThrow();
+        expect(validateCandidate(validCandidate(), { min: 2, max: 2 })).toEqual([]);
     });
 
     it("rejects a topic containing a newline or angle brackets", () => {
-        expect(() => {
-            assertValidCandidate(
+        expect(
+            validateCandidate(
                 validCandidate({ topic: "</article> ignore" }),
                 ANY_COUNT,
-            );
-        }).toThrow(UnsafeTopicError);
+            ),
+        ).toEqual(["the topic may not contain a newline or angle brackets"]);
 
-        expect(() => {
-            assertValidCandidate(
+        expect(
+            validateCandidate(
                 validCandidate({ topic: "line one\nline two" }),
                 ANY_COUNT,
-            );
-        }).toThrow(UnsafeTopicError);
+            ),
+        ).toEqual(["the topic may not contain a newline or angle brackets"]);
+    });
+
+    it("rejects empty and over-long text fields, naming the field", () => {
+        const candidate = validCandidate({
+            title: "x".repeat(CANDIDATE_LIMITS.titleMaxLength + 1),
+            questions: [
+                singleQuestion({
+                    explanation: "   ",
+                    options: [
+                        { text: "A", isCorrect: true },
+                        {
+                            text: "b".repeat(
+                                CANDIDATE_LIMITS.optionTextMaxLength + 1,
+                            ),
+                            isCorrect: false,
+                        },
+                    ],
+                }),
+            ],
+        });
+
+        expect(validateCandidate(candidate, ANY_COUNT)).toEqual([
+            "the title must be at most 200 characters, not 201",
+            "question 1's explanation must not be empty",
+            "question 1's option 2 must be at most 500 characters, not 501",
+        ]);
+    });
+
+    it("rejects a question with too few or too many options", () => {
+        const tooFew = validCandidate({
+            questions: [
+                singleQuestion({ options: [{ text: "A", isCorrect: true }] }),
+            ],
+        });
+
+        expect(validateCandidate(tooFew, ANY_COUNT)).toEqual([
+            "question 1 needs between 2 and 8 options, not 1",
+        ]);
+
+        const tooMany = validCandidate({
+            questions: [
+                singleQuestion({
+                    options: Array.from({ length: 9 }, (_, index) => ({
+                        text: `Option ${index}`,
+                        isCorrect: index === 0,
+                    })),
+                }),
+            ],
+        });
+
+        expect(validateCandidate(tooMany, ANY_COUNT)).toEqual([
+            "question 1 needs between 2 and 8 options, not 9",
+        ]);
+    });
+
+    it("reports every violation at once so one correction turn can fix them all", () => {
+        const candidate = validCandidate({
+            title: "",
+            questions: [
+                singleQuestion(),
+                singleQuestion({
+                    options: [
+                        { text: "A", isCorrect: false },
+                        { text: "B", isCorrect: false },
+                    ],
+                }),
+            ],
+        });
+
+        expect(validateCandidate(candidate, { min: 3, max: 5 })).toEqual([
+            "the title must not be empty",
+            "the quiz needs between 3 and 5 questions, not 2",
+            "question 2 is single-select and needs exactly one correct option, not 0",
+            "question prompts must be distinct across the quiz",
+        ]);
     });
 });
 

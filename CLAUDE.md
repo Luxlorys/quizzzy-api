@@ -120,6 +120,16 @@ task, stop and ask; do not add exemptions to `.dependency-cruiser.cjs`.
    and then writes the whole stale entity back. A stale query is the trade;
    a stale write is data loss. Copy this split into every module that
    caches.
+   2c. **No policy in an adapter** (ADR-0009, ADR-0012). A
+   `*.<tech>.service.ts` is one call to the vendor plus the translation of its
+   errors and stop reasons into named module errors. Everything a second
+   vendor would need identically — preparing the input, planning, validating
+   the answer, deciding whether to retry or ask for a correction — is the
+   application service's, where in-memory ports can test it. An adapter
+   cannot be split into helper files (an implementation may not import a
+   sibling or a helper, and a helper may not import the SDK), so the only way
+   to shrink one is to move that work up. `generation.service.ts` is the live
+   example; its generator port returns an attempt with a `correct(reasons)`.
 3. **Services stay framework-free**: no Fastify, no Zod, no HTTP concepts, no
    status codes, no wire envelopes. Inputs/outputs are the service's own
    declared types.

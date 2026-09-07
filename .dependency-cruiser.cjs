@@ -76,11 +76,14 @@ const APPLICATION_SERVICE_FILE = "^src/modules/[^/]+/[^/.]+\\.service\\.ts$";
 /** The pure lib files anything may import. */
 const PURE_LIB = "^src/lib/(errors|clock|pagination)\\.ts$";
 
+/** The article-text lib: a pure transformation the generation use case runs before it calls its generator, so the application service may import it and an adapter has no reason to. */
+const ARTICLE_TEXT_LIB = "^src/lib/article-text\\.ts$";
+
 /** What domain files (entities, errors) may depend on: each other and the pure lib files. */
 const DOMAIN_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${PURE_LIB}`;
 
-/** What a service may depend on: the domain, its ports, other modules' published APIs (also a ports/ file), its transfer models, other application services, pure lib. */
-const SERVICE_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${APPLICATION_SERVICE_FILE}|${DTO_FILES}|${PORT_FILES}|${PURE_LIB}`;
+/** What a service may depend on: the domain, its ports, other modules' published APIs (also a ports/ file), its transfer models, other application services, pure lib, and the article-text lib. */
+const SERVICE_ALLOWED = `^src/modules/[^/]+/[^/]+\\.(entity|errors)\\.ts$|${APPLICATION_SERVICE_FILE}|${DTO_FILES}|${PORT_FILES}|${PURE_LIB}|${ARTICLE_TEXT_LIB}`;
 
 /**
  * What a dto/*.dto.ts file may depend on: the domain it maps from, its sibling
@@ -165,10 +168,12 @@ const ADAPTERS = [
         family: "service",
         sdk: "^node_modules/@anthropic-ai",
         sdkAlsoIn: ["^src/plugins/anthropic\\.ts$"],
-        alsoDependsOn: ["^node_modules/zod", "^src/lib/article-text\\.ts$"],
+        alsoDependsOn: ["^node_modules/zod"],
         note:
             "It is a `.service.ts` rather than a `.repository.ts` because it adapts an external " +
-            "capability the module calls, not a store it reads and writes.",
+            "capability the module calls, not a store it reads and writes. It is one model turn " +
+            "plus a correction turn: text extraction, question planning, validation and the " +
+            "correction budget are the service's (ADR-0012).",
     },
 ];
 

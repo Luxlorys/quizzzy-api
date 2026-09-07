@@ -1,57 +1,27 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { buildTestApp } from "./helpers/build-test-app.js";
-import type { QuizCandidate } from "@/modules/generation/generation.entity.js";
-import type {
-    GenerateQuizInput,
-    GenerationUsage,
-    QuizGenerator,
-} from "@/modules/generation/ports/generator.port.js";
+import {
+    cannedAttempt,
+    createStubQuizGenerator,
+} from "../helpers/stub-quiz-generator.js";
+import type { QuizGenerator } from "@/modules/generation/ports/generator.port.js";
 import type { FastifyInstance } from "fastify";
 
 const ARTICLE_HTML =
-    "<html><body><p>Lambda cold starts happen when a fresh execution " +
-    "environment must be initialized before your code can run.</p></body></html>";
-
-const CANNED_CANDIDATE: QuizCandidate = {
-    title: "AWS Lambda Cold Starts",
-    topic: "AWS Lambda",
-    topicSource: "new",
-    questions: [
-        {
-            kind: "single",
-            prompt: "What causes a cold start?",
-            explanation: "A fresh execution environment must be initialized.",
-            options: [
-                { text: "A new execution environment", isCorrect: true },
-                { text: "Low memory", isCorrect: false },
-            ],
-        },
-    ],
-};
-
-const USAGE: GenerationUsage = {
-    inputTokens: 500,
-    outputTokens: 200,
-    cacheReadTokens: 0,
-};
-
-const stubGenerator = (
-    behavior: (input: GenerateQuizInput) => Promise<{
-        candidate: QuizCandidate;
-        usage: GenerationUsage;
-    }> = async () => ({
-        candidate: CANNED_CANDIDATE,
-        usage: USAGE,
-    }),
-): QuizGenerator => ({ generate: behavior });
+    "<html><body><h1>Lambda cold starts</h1>" +
+    "<p>A cold start happens when a fresh execution environment must be initialized " +
+    "before your code can run. The platform downloads the package, starts the runtime, " +
+    "and runs any initialization code that sits outside the handler.</p>" +
+    "<p>Warm environments skip all of that, which is why steady traffic feels faster " +
+    "than a burst after a long idle period.</p></body></html>";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const slowGenerator = (ms: number): QuizGenerator =>
-    stubGenerator(async () => {
+    createStubQuizGenerator(async () => {
         await sleep(ms);
 
-        return { candidate: CANNED_CANDIDATE, usage: USAGE };
+        return cannedAttempt();
     });
 
 const uploadArticle = async (app: FastifyInstance): Promise<number> => {
@@ -100,7 +70,10 @@ describe("generation routes", () => {
     });
 
     it("starts a generation, returns 202, and settles as succeeded", async () => {
-        app = await buildTestApp({}, { generation: { generator: stubGenerator() } });
+        app = await buildTestApp(
+            {},
+            { generation: { generator: createStubQuizGenerator() } },
+        );
 
         const articleId = await uploadArticle(app);
 
@@ -123,7 +96,10 @@ describe("generation routes", () => {
     });
 
     it("returns 404 for an article that does not exist", async () => {
-        app = await buildTestApp({}, { generation: { generator: stubGenerator() } });
+        app = await buildTestApp(
+            {},
+            { generation: { generator: createStubQuizGenerator() } },
+        );
 
         const response = await app.inject({
             method: "POST",
@@ -169,7 +145,10 @@ describe("generation routes", () => {
     });
 
     it("reports null from /active when nothing is running", async () => {
-        app = await buildTestApp({}, { generation: { generator: stubGenerator() } });
+        app = await buildTestApp(
+            {},
+            { generation: { generator: createStubQuizGenerator() } },
+        );
 
         const response = await app.inject({
             method: "GET",
@@ -181,7 +160,10 @@ describe("generation routes", () => {
     });
 
     it("returns 404 for a generation id that does not exist", async () => {
-        app = await buildTestApp({}, { generation: { generator: stubGenerator() } });
+        app = await buildTestApp(
+            {},
+            { generation: { generator: createStubQuizGenerator() } },
+        );
 
         const response = await app.inject({
             method: "GET",
@@ -196,7 +178,7 @@ describe("generation routes", () => {
             {},
             {
                 generation: {
-                    generator: stubGenerator(async () => {
+                    generator: createStubQuizGenerator(async () => {
                         throw new Error("boom");
                     }),
                 },
@@ -221,7 +203,10 @@ describe("generation routes", () => {
     });
 
     it("appears in the OpenAPI spec", async () => {
-        app = await buildTestApp({}, { generation: { generator: stubGenerator() } });
+        app = await buildTestApp(
+            {},
+            { generation: { generator: createStubQuizGenerator() } },
+        );
 
         const response = await app.inject({ method: "GET", url: "/docs/json" });
         const spec = response.json<{ paths: Record<string, unknown> }>();

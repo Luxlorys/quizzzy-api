@@ -35,40 +35,6 @@ export class EmptyArticleTextError extends UnprocessableError {
     }
 }
 
-export class InvalidCandidateAnswerKeyError extends UnprocessableError {
-    constructor() {
-        super(
-            "A single-select question needs exactly one correct option, a multi-select question at least one.",
-        );
-    }
-}
-
-export class DuplicateCandidateOptionError extends UnprocessableError {
-    constructor() {
-        super("A question's option texts must be unique.");
-    }
-}
-
-export class DuplicateCandidatePromptError extends UnprocessableError {
-    constructor() {
-        super("A quiz's question prompts must be unique.");
-    }
-}
-
-export class QuestionCountOutOfRangeError extends UnprocessableError {
-    constructor(actual: number, min: number, max: number) {
-        super(
-            `A quiz for this article needs between ${min} and ${max} questions, not ${actual}.`,
-        );
-    }
-}
-
-export class UnsafeTopicError extends UnprocessableError {
-    constructor() {
-        super("A topic may not contain a newline or angle brackets.");
-    }
-}
-
 export class GenerationInvalidOutputError extends UnprocessableError {
     constructor(reasons: string[] = []) {
         super(
@@ -96,8 +62,18 @@ export class GenerationOutputTruncatedError extends UnprocessableError {
 }
 
 export class GenerationUnavailableError extends UnprocessableError {
-    constructor() {
-        super("The question generator is unavailable right now.");
+    constructor(detail?: string) {
+        super(
+            detail === undefined
+                ? "The question generator is unavailable right now."
+                : `The question generator is unavailable right now: ${detail}`,
+        );
+    }
+}
+
+export class GenerationRequestRejectedError extends UnprocessableError {
+    constructor(detail: string) {
+        super(`The question generator rejected the request: ${detail}`);
     }
 }
 

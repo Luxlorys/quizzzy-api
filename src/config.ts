@@ -32,6 +32,7 @@ const envSchema = z.object({
     GENERATION_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(32000),
     GENERATION_MIN_QUESTIONS: z.coerce.number().int().min(1).max(30).default(5),
     GENERATION_MAX_QUESTIONS: z.coerce.number().int().min(1).max(30).default(30),
+    GENERATION_MAX_CORRECTIONS: z.coerce.number().int().min(0).default(1),
     GENERATION_LOCK_TTL_SECONDS: z.coerce.number().int().positive().default(90),
     GENERATION_LOCK_RENEW_SECONDS: z.coerce.number().int().positive().default(30),
 });
